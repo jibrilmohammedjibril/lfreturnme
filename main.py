@@ -115,10 +115,12 @@ import schemas
 
 app = FastAPI()
 
+
 @app.get("/favicon.ico", include_in_schema=False)
 async def favicon():
-    favicon_path = os.path.join(app.root_path, "static", "favicon.ico")
+    favicon_path = os.path.join("static", "favicon.ico")
     return FileResponse(favicon_path)
+
 
 @app.post("/signup/", response_model=schemas.ResponseSignup)
 async def signup(
