@@ -103,16 +103,22 @@
 #         raise HTTPException(status_code=500, detail="Internal server error")
 #
 
-import uvicorn
-from fastapi import FastAPI, HTTPException, File, UploadFile, Form
-import schemas
-import crud
-import aiofiles
 import os
 from datetime import datetime
 
+import aiofiles
+from fastapi import FastAPI, HTTPException, File, UploadFile, Form
+from fastapi.responses import FileResponse
+
+import crud
+import schemas
+
 app = FastAPI()
 
+@app.get("/favicon.ico", include_in_schema=False)
+async def favicon():
+    favicon_path = os.path.join(app.root_path, "static", "favicon.ico")
+    return FileResponse(favicon_path)
 
 @app.post("/signup/", response_model=schemas.ResponseSignup)
 async def signup(
