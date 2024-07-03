@@ -103,23 +103,15 @@
 #         raise HTTPException(status_code=500, detail="Internal server error")
 #
 
-import os
+
+from fastapi import FastAPI, HTTPException, Form, UploadFile, File
 from datetime import datetime
-
+import os
 import aiofiles
-from fastapi import FastAPI, HTTPException, File, UploadFile, Form
-from fastapi.responses import FileResponse
-
-import crud
 import schemas
+import crud
 
 app = FastAPI()
-
-
-@app.get("/favicon.ico", include_in_schema=False)
-async def favicon():
-    favicon_path = os.path.join("static", "favicon.ico")
-    return FileResponse(favicon_path)
 
 
 @app.post("/signup/", response_model=schemas.ResponseSignup)
@@ -132,9 +124,9 @@ async def signup(
         phone_number: str = Form(...),
         gender: str = Form(...),
         valid_id_type: str = Form(...),
-        id_card_image: str = Form(...),
         password: str = Form(...),
-        profile_picture: UploadFile = File(...)
+        profile_picture: UploadFile = File(...),
+        id_card_image: UploadFile = File(...)
 ):
     try:
         # Parse date_of_birth from string to date object
@@ -149,6 +141,15 @@ async def signup(
             content = await profile_picture.read()
             await out_file.write(content)
 
+        # Save the ID card image to a directory
+        id_card_image_dir = "id_card_images"
+        os.makedirs(id_card_image_dir, exist_ok=True)
+        id_card_image_path = os.path.join(id_card_image_dir, id_card_image.filename)
+
+        async with aiofiles.open(id_card_image_path, 'wb') as out_file:
+            content = await id_card_image.read()
+            await out_file.write(content)
+
         # Create a user object
         user = schemas.Signup(
             full_name=full_name,
@@ -159,7 +160,7 @@ async def signup(
             phone_number=phone_number,
             gender=gender,
             valid_id_type=valid_id_type,
-            id_card_image=id_card_image,
+            id_card_image=id_card_image_path,
             password=password,
             profile_picture=profile_picture_path
         )
@@ -187,3 +188,5 @@ def signin(user: schemas.Signin):
     except Exception as e:
         print(f"Exception: {e}")  # Debugging information
         raise HTTPException(status_code=500, detail="Internal server error")
+
+#

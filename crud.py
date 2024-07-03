@@ -96,19 +96,12 @@
 #     return None
 
 
-
-
-
-
-
-
-
-
 import mysql.connector
 from mysql.connector import Error
 import schemas
 import uuid
 import bcrypt
+
 
 def check_credentials(email_address, connection):
     try:
@@ -126,6 +119,7 @@ def check_credentials(email_address, connection):
     except Error as e:
         print(f"Error in check_credentials: {e}")
         return False
+
 
 def create_user(user: schemas.Signup):
     connection = None
@@ -167,6 +161,7 @@ def create_user(user: schemas.Signup):
             cursor.close()
         if connection:
             connection.close()
+
 
 def authenticate_user(email_address: str, password: str):
     connection = None
