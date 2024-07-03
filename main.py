@@ -102,7 +102,7 @@
 #     except Exception as e:
 #         raise HTTPException(status_code=500, detail="Internal server error")
 #
-
+from fastapi.middleware.cors import CORSMiddleware
 
 from fastapi import FastAPI, HTTPException, Form, UploadFile, File
 from datetime import datetime
@@ -112,7 +112,13 @@ import schemas
 import crud
 
 app = FastAPI()
-
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # Adjust this to the specific origins you want to allow
+    allow_credentials=True,
+    allow_methods=["*"],  # Allow all methods
+    allow_headers=["*"],  # Allow all headers
+)
 
 @app.post("/signup/", response_model=schemas.ResponseSignup)
 async def signup(
