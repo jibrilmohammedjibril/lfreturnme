@@ -126,10 +126,10 @@ def create_user(user: schemas.Signup):
     cursor = None
     try:
         connection = mysql.connector.connect(
-            host="localhost",
-            user="root",
-            passwd="Halifas2001",
-            database="lfreturnme"
+            host="sql8.freesqldatabase.com",
+            user="sql8717709",
+            passwd="rWjn79V1mX",
+            database="sql8717709"
         )
         user_uuid = str(uuid.uuid4())  # Generate a unique UUID
         hashed_password = bcrypt.hashpw(user.password.encode('utf-8'), bcrypt.gensalt())
@@ -168,10 +168,10 @@ def authenticate_user(email_address: str, password: str):
     cursor = None
     try:
         connection = mysql.connector.connect(
-            host="localhost",
-            user="root",
-            passwd="Halifas2001",
-            database="lfreturnme"
+            host="sql8.freesqldatabase.com",
+            user="sql8717709",
+            passwd="rWjn79V1mX",
+            database="sql8717709"
         )
         if connection.is_connected():
             cursor = connection.cursor(dictionary=True)
