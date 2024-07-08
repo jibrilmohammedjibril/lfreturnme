@@ -212,24 +212,23 @@ app.add_middleware(
     allow_headers=["*"],  # Allow all headers
 )
 
-
 @app.post("/signup/", response_model=schemas.ResponseSignup)
 async def signup(
-        full_name: str = Form(...),
-        email_address: str = Form(...),
-        date_of_birth: str = Form(...),
-        address: str = Form(...),
-        id_no: str = Form(...),
-        phone_number: str = Form(...),
-        gender: str = Form(...),
-        valid_id_type: str = Form(...),
-        password: str = Form(...),
-        profile_picture: UploadFile = File(...),
-        id_card_image: UploadFile = File(...)
+    full_name: str = Form(...),
+    email_address: str = Form(...),
+    date_of_birth: str = Form(...),
+    address: str = Form(...),
+    id_no: str = Form(...),
+    phone_number: str = Form(...),
+    gender: str = Form(...),
+    valid_id_type: str = Form(...),
+    password: str = Form(...),
+    profile_picture: UploadFile = File(...),
+    id_card_image: UploadFile = File(...)
 ):
     try:
         # Parse date_of_birth from string to date object
-        date_of_birth_obj = datetime.strptime(date_of_birth, "%Y-%m-%d").date()
+        date_of_birth_obj = datetime.strptime(date_of_birth, "%d-%m-%Y").date()
 
         # Read and upload profile picture to GridFS
         profile_picture_data = await profile_picture.read()
