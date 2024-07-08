@@ -228,7 +228,7 @@ async def signup(
 ):
     try:
         # Parse date_of_birth from string to date object
-        date_of_birth_obj = datetime.strptime(date_of_birth, "%d-%m-%Y").date()
+        date_of_birth_obj = datetime.strptime(date_of_birth, "%Y-%m-%d").date()
 
         # Read and upload profile picture to GridFS
         profile_picture_data = await profile_picture.read()
