@@ -1,205 +1,38 @@
-# import mysql.connector
-# from mysql.connector import Error
-# import schemas
-# import uuid
-# import bcrypt
-#
-#
-# def check_credentials(email_address, connection):
-#     query = f"""
-#                 SELECT COUNT(*)
-#                 FROM users
-#                 WHERE
-#                 email_address = '{email_address}'
-#                     """
-#     #OR uuid = '{uuid}'
-#     cursor1 = connection.cursor()
-#     cursor1.execute(query)
-#     rows = cursor1.fetchone()
-#
-#     count = rows[0]  #[row.count for row in rows]
-#     #print(count)
-#     if count > 0:
-#
-#         return False
-#     else:
-#         return True
-#
-#
-# def create_user(user: schemas.Signup):
-#     try:
-#         connection = mysql.connector.connect(
-#             host="localhost",
-#             user="root",
-#             passwd="Halifas2001",
-#             database="lfreturnme"
-#         )
-#         user_uuid = str(uuid.uuid4())  # Generate a unique UUID
-#         hashed_password = bcrypt.hashpw(user.password.encode('utf-8'), bcrypt.gensalt())
-#         cursor = connection.cursor()
-#         if connection.is_connected():
-#
-#             chck = check_credentials(user.email_address, connection)
-#             print(chck)
-#             if chck:
-#                 print(connection.is_connected())
-#
-#                 print(cursor)
-#                 insert_query = """INSERT INTO users (uuid, full_name, email_address, date_of_birth, address, id_no, profile_picture, phone_number, gender, valid_id_type, id_card_image, password)
-#                                               VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)"""
-#                 cursor.execute(insert_query, (
-#                     user_uuid, user.full_name, user.email_address, user.date_of_birth, user.address, user.id_no,
-#                     user.profile_picture, user.phone_number, user.gender, user.valid_id_type, user.id_card_image,
-#                     hashed_password.decode('utf-8')
-#                 ))
-#                 connection.commit()
-#                 user.uuid = user_uuid  # Assign the generated UUID to the user object
-#                 return user
-#             else:
-#                 print("Sorry, use another information! Credentials seem to exist")
-#                 return None
-#         #print("hello1")
-#
-#     except Error as e:
-#         print(f"Error: {e}")
-#         #print("hello2")
-#     finally:
-#         if connection.is_connected():
-#             cursor.close()
-#             connection.close()
-#             return None
-#
-#     #print("hello3")
-#
-#
-# def authenticate_user(email_address: str, password: str):
-#     try:
-#         connection = mysql.connector.connect(
-#             host="localhost",
-#             user="root",
-#             passwd="Halifas2001",
-#             database="lfreturnme"
-#         )
-#         if connection.is_connected():
-#             cursor = connection.cursor(dictionary=True)
-#             select_query = "SELECT * FROM users WHERE email_address = %s"
-#             cursor.execute(select_query, (email_address,))
-#             user = cursor.fetchone()
-#             if user and bcrypt.checkpw(password.encode('utf-8'), user['password'].encode('utf-8')):
-#                 return user
-#     except Error as e:
-#         print(f"Error: {e}")
-#     finally:
-#         if connection.is_connected():
-#             cursor.close()
-#             connection.close()
-#     return None
-
-#
-# import mysql.connector
-# from mysql.connector import Error
-# import schemas
-# import uuid
-# import bcrypt
-#
-#
-# def check_credentials(email_address, connection):
-#     try:
-#         query = """
-#             SELECT COUNT(*)
-#             FROM users
-#             WHERE email_address = %s
-#         """
-#         cursor = connection.cursor()
-#         cursor.execute(query, (email_address,))
-#         rows = cursor.fetchone()
-#         count = rows[0]
-#         print(f"check_credentials: email_address={email_address}, count={count}")  # Debugging information
-#         return count == 0
-#     except Error as e:
-#         print(f"Error in check_credentials: {e}")
-#         return False
-#
-#
-# def create_user(user: schemas.Signup):
-#     connection = None
-#     cursor = None
-#     try:
-#         connection = mysql.connector.connect(
-#             host="sql8.freesqldatabase.com",
-#             user="sql8717709",
-#             passwd="rWjn79V1mX",
-#             database="sql8717709"
-#         )
-#         user_uuid = str(uuid.uuid4())  # Generate a unique UUID
-#         hashed_password = bcrypt.hashpw(user.password.encode('utf-8'), bcrypt.gensalt())
-#         cursor = connection.cursor()
-#         if connection.is_connected():
-#             if check_credentials(user.email_address, connection):
-#                 insert_query = """
-#                     INSERT INTO users (
-#                         uuid, full_name, email_address, date_of_birth, address, id_no, profile_picture,
-#                         phone_number, gender, valid_id_type, id_card_image, password
-#                     ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-#                 """
-#                 cursor.execute(insert_query, (
-#                     user_uuid, user.full_name, user.email_address, user.date_of_birth, user.address, user.id_no,
-#                     user.profile_picture, user.phone_number, user.gender, user.valid_id_type, user.id_card_image,
-#                     hashed_password.decode('utf-8')
-#                 ))
-#                 connection.commit()
-#                 user.uuid = user_uuid  # Assign the generated UUID to the user object
-#                 return user
-#             else:
-#                 print("create_user: Email address already exists")  # Debugging information
-#                 return None
-#     except Error as e:
-#         print(f"Error in create_user: {e}")
-#         return None
-#     finally:
-#         if cursor:
-#             cursor.close()
-#         if connection:
-#             connection.close()
-#
-#
-# def authenticate_user(email_address: str, password: str):
-#     connection = None
-#     cursor = None
-#     try:
-#         connection = mysql.connector.connect(
-#             host="sql8.freesqldatabase.com",
-#             user="sql8717709",
-#             passwd="rWjn79V1mX",
-#             database="sql8717709"
-#         )
-#         if connection.is_connected():
-#             cursor = connection.cursor(dictionary=True)
-#             select_query = "SELECT * FROM users WHERE email_address = %s"
-#             cursor.execute(select_query, (email_address,))
-#             user = cursor.fetchone()
-#             if user and bcrypt.checkpw(password.encode('utf-8'), user['password'].encode('utf-8')):
-#                 return user
-#     except Error as e:
-#         print(f"Error in authenticate_user: {e}")
-#     finally:
-#         if cursor:
-#             cursor.close()
-#         if connection:
-#             connection.close()
-#     return None
 import motor.motor_asyncio
+from fastapi import UploadFile
+
 import schemas
 import uuid
 import bcrypt
 import logging
+from schemas import Tag, ItemRegistration, Dashboard
+from bson import ObjectId
+from pymongo import MongoClient
+import firebase_admin
+from firebase_admin import credentials, storage
+from typing import Optional
+from pymongo.collection import Collection
+from datetime import datetime, timedelta
+from pymongo import ReturnDocument
 
 logger = logging.getLogger(__name__)
 
 # MongoDB connection setup
-client = motor.motor_asyncio.AsyncIOMotorClient("mongodb+srv://Admin:AITeKaIUZtKdYbvu@lfreturnme.vjjpets.mongodb.net/?retryWrites=true&w=majority&appName=LFReturnMe")
+client = motor.motor_asyncio.AsyncIOMotorClient(
+    "mongodb+srv://Admin:AITeKaIUZtKdYbvu@lfreturnme.vjjpets.mongodb.net/?retryWrites=true&w=majority&appName=LFReturnMe")
 database = client["LFReturnMe"]
+db = client["LFReturnMe"]
 users_collection = database["users"]
+tags_collection = db["tags"]
+items_collection = db["items"]
+reset_tokens_collection = database["reset_tokens"]
+
+# Initialize Firebase app
+cred = credentials.Certificate("lfreturnme-5a551-firebase-adminsdk-60kvl-26bfb40e9f.json")
+firebase_admin.initialize_app(cred, {
+    'storageBucket': 'lfreturnme-5a551.appspot.com'
+})
+
 
 async def check_credentials(email_address: str) -> bool:
     try:
@@ -210,9 +43,10 @@ async def check_credentials(email_address: str) -> bool:
         logger.error("Error in check_credentials: %s", e)
         raise
 
+
 async def create_user(user: schemas.Signup) -> schemas.ResponseSignup:
     try:
-        user_uuid = str(uuid.uuid4())  # Generate a unique UUID
+        user_uuid = str(uuid.uuid4())
         hashed_password = bcrypt.hashpw(user.password.encode('utf-8'), bcrypt.gensalt())
 
         if await check_credentials(user.email_address):
@@ -220,7 +54,7 @@ async def create_user(user: schemas.Signup) -> schemas.ResponseSignup:
                 "uuid": user_uuid,
                 "full_name": user.full_name,
                 "email_address": user.email_address,
-                "date_of_birth": user.date_of_birth.isoformat(),  # Save as string
+                "date_of_birth": user.date_of_birth.isoformat(),
                 "address": user.address,
                 "id_no": user.id_no,
                 "profile_picture": user.profile_picture,
@@ -240,15 +74,145 @@ async def create_user(user: schemas.Signup) -> schemas.ResponseSignup:
         logger.error("Error in create_user: %s", e)
         raise
 
+
+def calculate_registered_items(user: schemas.ResponseSignup) -> int:
+    print(user.items)
+    return len(user.items)
+
+
+def calculate_lost_items(user: Dashboard) -> int:
+    return sum(1 for item in user.items.values() if item.status == "1")
+
+
+def calculate_found_items(user: Dashboard) -> int:
+    return sum(1 for item in user.items.values() if item.status == "2")
+
+
 async def authenticate_user(email_address: str, password: str) -> schemas.ResponseSignup:
     try:
         user = await users_collection.find_one({"email_address": email_address})
         if user and bcrypt.checkpw(password.encode('utf-8'), user['password'].encode('utf-8')):
             logger.info("User authenticated successfully: %s", email_address)
+            #print(user.items)
+            #user.registered_items = calculate_registered_items(user)
+            #user.lost_items = calculate_lost_items(user)
+            #user.found_items = calculate_found_items(user)
             return schemas.ResponseSignup(**user)
         else:
             logger.warning("Authentication failed for user: %s", email_address)
             return None
     except Exception as e:
         logger.error("Error in authenticate_user: %s", e)
+        raise
+
+
+async def get_tag_by_tag1(tag1: str) -> Optional[Tag]:
+    tag_data = await tags_collection.find_one({"tag1": tag1})
+    if tag_data:
+        return Tag(**tag_data)
+    return None
+
+
+async def update_tag(tag1: str, uuid: str) -> bool:
+    result = await tags_collection.update_one(
+        {"tag1": tag1},
+        {"$set": {"is_owned": True, "uuid": uuid}}
+    )
+    return result.modified_count > 0
+
+
+async def save_item_registration(item: ItemRegistration) -> bool:
+    item_dict = item.dict()
+    result = await items_collection.insert_one(item_dict)
+    return result.inserted_id is not None
+
+
+async def update_user_items(uuid: str, item: ItemRegistration) -> bool:
+    user = await users_collection.find_one({"uuid": uuid})
+    if user:
+        items = user.get("items", {})
+        items[item.tag_id] = item.dict()  # Use tag_id as the key and the item dict as the value
+        result = await users_collection.update_one(
+            {"uuid": uuid},
+            {"$set": {"items": items}}
+        )
+        return result.modified_count > 0
+    return False
+
+
+def upload_to_firebase(file: UploadFile) -> str:
+    bucket = storage.bucket()
+    blob = bucket.blob(f"{uuid.uuid4()}-{file.filename}")
+    blob.upload_from_string(file.file.read(), content_type=file.content_type)
+    blob.make_public()
+    return blob.public_url
+
+
+async def get_user_by_uuid(db: Collection, uuid: str) -> Optional[Dashboard]:
+    user_data = db.find_one({"uuid": uuid})
+    if user_data:
+        user = Dashboard(**user_data)
+        user.registered_items = calculate_registered_items(user)
+        user.lost_items = calculate_lost_items(user)
+        user.found_items = calculate_found_items(user)
+        return user
+    return None
+
+
+def calculate_registered_items(user: Dashboard) -> int:
+    return len(user.items)
+
+
+def calculate_lost_items(user: Dashboard) -> int:
+    return sum(1 for item in user.items.values() if item.status == "1")
+
+
+def calculate_found_items(user: Dashboard) -> int:
+    return sum(1 for item in user.items.values() if item.status == "2")
+
+
+async def create_reset_token(email_address: str) -> str:
+    try:
+        user = await users_collection.find_one({"email_address": email_address})
+        if user:
+            token = str(uuid.uuid4())
+            expiration_time = datetime.utcnow() + timedelta(hours=1)  # Token valid for 1 hour
+            reset_token_data = {
+                "email_address": email_address,
+                "token": token,
+                "expiration_time": expiration_time
+            }
+            await reset_tokens_collection.insert_one(reset_token_data)
+            return token
+        else:
+            return None
+    except Exception as e:
+        logger.error("Error in create_reset_token: %s", e)
+        raise
+
+
+async def validate_reset_token(token: str) -> str:
+    try:
+        token_data = await reset_tokens_collection.find_one(
+            {"token": token, "expiration_time": {"$gt": datetime.utcnow()}})
+        if token_data:
+            return token_data["email_address"]
+        else:
+            return None
+    except Exception as e:
+        logger.error("Error in validate_reset_token: %s", e)
+        raise
+
+
+async def update_password(email_address: str, new_password: str) -> bool:
+    try:
+        hashed_password = bcrypt.hashpw(new_password.encode('utf-8'), bcrypt.gensalt())
+        updated_user = await users_collection.find_one_and_update(
+            {"email_address": email_address},
+            {"$set": {"password": hashed_password.decode('utf-8')}},
+            return_document=ReturnDocument.AFTER
+        )
+        return updated_user is not None
+    except Exception as e:
+        logger.error("Error in update_password: %s", e)
         raise

@@ -21,7 +21,9 @@ async def upload_file_to_gridfs(file_data: bytes, filename: str) -> str:
 
 async def get_file_from_gridfs(file_id: str) -> bytes:
     try:
-        file_data = await fs.open_download_stream(ObjectId(file_id)).read()
+        stream = await fs.open_download_stream(ObjectId(file_id))
+        file_data = await stream.read()
+        await stream.close()  # Ensure the stream is closed after reading
         logger.info(f"File retrieved from GridFS with id: {file_id}")
         return file_data
     except Exception as e:

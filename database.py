@@ -17,3 +17,26 @@
 #
 # for x in mycursor:
 #     print(x[2]
+
+
+from pymongo import MongoClient
+
+# Replace the connection string with your MongoDB connection string
+client = MongoClient(
+    "mongodb+srv://Admin:AITeKaIUZtKdYbvu@lfreturnme.vjjpets.mongodb.net/?retryWrites=true&w=majority&appName=LFReturnMe")
+db = client["LFReturnMe"]
+collection = db["tags"]
+
+# Define the update operation
+update_operation = {
+    "$unset": {
+        "status": ""
+    }
+}
+
+
+# Apply the update operation to all documents
+result = collection.update_many({}, update_operation)
+
+# Print the result
+print(f"Matched {result.matched_count} documents and modified {result.modified_count} documents.")
