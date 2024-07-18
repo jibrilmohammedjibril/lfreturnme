@@ -1,3 +1,7 @@
+import base64
+import json
+import os
+
 import motor.motor_asyncio
 from fastapi import UploadFile
 
@@ -26,9 +30,25 @@ users_collection = database["users"]
 tags_collection = db["tags"]
 items_collection = db["items"]
 reset_tokens_collection = database["reset_tokens"]
+#####
 
+firebase_key_base64 = os.getenv("FIREBASE_KEY_BASE64")
+if not firebase_key_base64:
+    raise RuntimeError("FIREBASE_KEY_BASE64 environment variable not set")
+
+firebase_key_json = base64.b64decode(firebase_key_base64).decode('utf-8')
+firebase_key_dict = json.loads(firebase_key_json)
+cred = credentials.Certificate(firebase_key_dict)
+
+# Read Firebase project ID from environment variable
+firebase_project_id = os.getenv("FIREBASE_PROJECT_ID")
+if not firebase_project_id:
+    raise RuntimeError("FIREBASE_PROJECT_ID environment variable not set")
+
+# Initialize Firebase Admin SDK
+#initialize_app(cred, {'storageBucket': f'{firebase_project_id}.appspot.com'})
 # Initialize Firebase app
-cred = credentials.Certificate("lfreturnme-5a551-firebase-adminsdk-60kvl-26bfb40e9f.json")
+#cred = credentials.Certificate("lfreturnme-5a551-firebase-adminsdk-60kvl-8eb9886962.json")
 firebase_admin.initialize_app(cred, {
     'storageBucket': 'lfreturnme-5a551.appspot.com'
 })
@@ -62,7 +82,8 @@ async def create_user(user: schemas.Signup) -> schemas.ResponseSignup:
                 "gender": user.gender,
                 "valid_id_type": user.valid_id_type,
                 "id_card_image": user.id_card_image,
-                "password": hashed_password.decode('utf-8')
+                "password": hashed_password.decode('utf-8'),
+
             }
             await users_collection.insert_one(user_data)
             logger.info("User created successfully: %s", user_uuid)
@@ -75,28 +96,11 @@ async def create_user(user: schemas.Signup) -> schemas.ResponseSignup:
         raise
 
 
-def calculate_registered_items(user: schemas.ResponseSignup) -> int:
-    print(user.items)
-    return len(user.items)
-
-
-def calculate_lost_items(user: Dashboard) -> int:
-    return sum(1 for item in user.items.values() if item.status == "1")
-
-
-def calculate_found_items(user: Dashboard) -> int:
-    return sum(1 for item in user.items.values() if item.status == "2")
-
-
 async def authenticate_user(email_address: str, password: str) -> schemas.ResponseSignup:
     try:
         user = await users_collection.find_one({"email_address": email_address})
         if user and bcrypt.checkpw(password.encode('utf-8'), user['password'].encode('utf-8')):
             logger.info("User authenticated successfully: %s", email_address)
-            #print(user.items)
-            #user.registered_items = calculate_registered_items(user)
-            #user.lost_items = calculate_lost_items(user)
-            #user.found_items = calculate_found_items(user)
             return schemas.ResponseSignup(**user)
         else:
             logger.warning("Authentication failed for user: %s", email_address)
@@ -108,8 +112,10 @@ async def authenticate_user(email_address: str, password: str) -> schemas.Respon
 
 async def get_tag_by_tag1(tag1: str) -> Optional[Tag]:
     tag_data = await tags_collection.find_one({"tag1": tag1})
+    print(tag_data)
     if tag_data:
         return Tag(**tag_data)
+
     return None
 
 
@@ -148,27 +154,15 @@ def upload_to_firebase(file: UploadFile) -> str:
     return blob.public_url
 
 
-async def get_user_by_uuid(db: Collection, uuid: str) -> Optional[Dashboard]:
-    user_data = db.find_one({"uuid": uuid})
-    if user_data:
-        user = Dashboard(**user_data)
-        user.registered_items = calculate_registered_items(user)
-        user.lost_items = calculate_lost_items(user)
-        user.found_items = calculate_found_items(user)
-        return user
-    return None
-
-
-def calculate_registered_items(user: Dashboard) -> int:
-    return len(user.items)
-
-
-def calculate_lost_items(user: Dashboard) -> int:
-    return sum(1 for item in user.items.values() if item.status == "1")
-
-
-def calculate_found_items(user: Dashboard) -> int:
-    return sum(1 for item in user.items.values() if item.status == "2")
+# async def get_user_by_uuid(db: Collection, uuid: str) -> Optional[Dashboard]:
+#     user_data = db.find_one({"uuid": uuid})
+#     if user_data:
+#         user = Dashboard(**user_data)
+#         user.registered_items = calculate_registered_items(user)
+#         user.lost_items = calculate_lost_items(user)
+#         user.found_items = calculate_found_items(user)
+#         return user
+#     return None
 
 
 async def create_reset_token(email_address: str) -> str:

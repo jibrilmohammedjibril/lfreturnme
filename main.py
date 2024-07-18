@@ -65,7 +65,12 @@ async def signup(
             valid_id_type=valid_id_type,
             profile_picture=profile_picture_url,
             id_card_image=id_card_image_url,
-            password=password
+            password=password,
+            # registered_items=0,
+            # lost_items=0,
+            # found_items=0,
+            # items={}
+
         )
 
         db_user = await crud.create_user(user=user)
@@ -102,10 +107,13 @@ async def register_item(
 
 ):
     tag = await get_tag_by_tag1(tag_id)
+    print("tag aquired1")
     if not tag:
+        print("tag aquired2")
         raise HTTPException(status_code=404, detail="Tag not found")
 
     if tag.is_owned:
+        print("tag aquired3")
         raise HTTPException(status_code=400, detail="This tag is already owned")
 
     # Upload image to Firebase
@@ -130,12 +138,15 @@ async def register_item(
     )
 
     if not await save_item_registration(item):
+        print("tag aquired4")
         raise HTTPException(status_code=500, detail="Failed to save item registration")
 
     if not await update_user_items(uuid, item):
+        print("tag aquired5")
         raise HTTPException(status_code=500, detail="Failed to update user's items")
 
     if not await update_tag(tag_id, uuid):
+        print("tag aquired8")
         raise HTTPException(status_code=500, detail="Failed to update the tag")
 
     return {"message": "Item registered successfully"}
@@ -147,7 +158,6 @@ async def forgot_password(request: schemas.ForgotPasswordRequest):
         token = await crud.create_reset_token(request.email_address)
         if token:
             reset_link = f"http://your-frontend-url/#/reset-password..?token={token}"
-            #reset_link = f"http://your-frontend-url/#/reset-password?token={token}"
             send_email(request.email_address, reset_link)
             return {"message": "Password reset email sent"}
         else:
@@ -178,7 +188,69 @@ def send_email(to_email: str, reset_link: str):
     msg['From'] = 'your-email@example.com'
     msg['To'] = to_email
 
-    with smtplib.SMTP('smtp.gmail.com', 587) as server:
-        server.starttls()
-        server.login('jibrilmjibril05@gmail.com', 'Halifas@2001')
-        server.sendmail('jibrilmjibril05@gmail.com', to_email, msg.as_string())
+    try:
+        with smtplib.SMTP_SSL('mail.lfreturnme.com', 465) as server:
+            server.login("infonfo@lfreturnme.com", "lfreturnme@1")
+            server.sendmail("infonfo@lfreturnme.com", to_email, msg.as_string())
+            print("Email sent successfully!")
+    except Exception as e:
+        print(f"Failed to send email: {e}")
+
+
+from fastapi import FastAPI, HTTPException, Path, Query
+from typing import Optional
+from pydantic import BaseModel
+from bson import ObjectId
+import motor.motor_asyncio
+
+# Assuming `client` and `database` are already defined as in your existing code
+
+
+@app.put("/update-item-status/")
+async def update_item_status(
+    uuid: str = Query(..., title="UUID of the user"),
+    tagid: str = Query(..., title="Tag ID / Item ID to find"),
+    new_status: int = Query(..., title="New status (integer) to update")
+):
+    try:
+        # Find user by UUID
+        user = await crud.users_collection.find_one({"uuid": uuid})
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
+
+        # Check if the item with the given tag_id exists in the user's items
+        if tagid not in user.get("items", {}):
+            raise HTTPException(status_code=404, detail=f"Item with tag ID {tagid} not found for user")
+
+        # Update the item's status in the user's items
+        user["items"][tagid]["status"] = str(new_status)
+
+        # Update user document with the modified items dictionary
+        user_result = await crud.users_collection.update_one(
+            {"uuid": uuid},
+            {"$set": {"items": user["items"]}}
+        )
+
+        if user_result.modified_count == 0:
+            raise HTTPException(status_code=500, detail="Failed to update item status in user's items")
+
+        # Find item in the items collection by tag_id
+        item = await crud.items_collection.find_one({"tag_id": tagid})
+        if not item:
+            raise HTTPException(status_code=404, detail="Item not found in items collection")
+
+        # Update the item's status in the items collection
+        item_result = await crud.items_collection.update_one(
+            {"tag_id": tagid},
+            {"$set": {"status": str(new_status)}}
+        )
+
+        if item_result.modified_count == 0:
+            raise HTTPException(status_code=500, detail="Failed to update item status in items collection")
+
+        return {"message": "Item status updated successfully", "item_tagid": tagid, "new_status": new_status}
+
+    except HTTPException as e:
+        raise e
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
