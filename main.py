@@ -1,6 +1,5 @@
 import smtplib
 from email.mime.text import MIMEText
-
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi import FastAPI, HTTPException, Form, UploadFile, File, Response, Depends
 from datetime import datetime, date
@@ -9,6 +8,7 @@ import crud
 import uuid
 from schemas import ItemRegistration
 from crud import get_tag_by_tag1, update_tag, save_item_registration, update_user_items, upload_to_firebase
+from fastapi import FastAPI, HTTPException, Path, Query
 
 app = FastAPI()
 app.add_middleware(
@@ -22,15 +22,7 @@ app.add_middleware(
 
 @app.get("/")
 async def root():
-    return {"message": "Welcome to LFReturnMe API1"}
-
-
-# @app.get("/user/{uuid}", response_model=schemas.Dashboard)
-# async def get_user(uuid: str):
-#     user = await crud.get_user_by_uuid(crud.users_collection, uuid)
-#     if not user:
-#         raise HTTPException(status_code=404, detail="User not found")
-#     return user
+    return {"message": "Welcome to LFReturnMe API"}
 
 
 @app.post("/signup/", response_model=schemas.ResponseSignup)
@@ -197,20 +189,14 @@ def send_email(to_email: str, reset_link: str):
         print(f"Failed to send email: {e}")
 
 
-from fastapi import FastAPI, HTTPException, Path, Query
-from typing import Optional
-from pydantic import BaseModel
-from bson import ObjectId
-import motor.motor_asyncio
-
 # Assuming `client` and `database` are already defined as in your existing code
 
 
 @app.put("/update-item-status/")
 async def update_item_status(
-    uuid: str = Query(..., title="UUID of the user"),
-    tagid: str = Query(..., title="Tag ID / Item ID to find"),
-    new_status: int = Query(..., title="New status (integer) to update")
+        uuid: str = Query(..., title="UUID of the user"),
+        tagid: str = Query(..., title="Tag ID / Item ID to find"),
+        new_status: str = Query(..., title="New status (integer) to update")
 ):
     try:
         # Find user by UUID
@@ -242,7 +228,7 @@ async def update_item_status(
         # Update the item's status in the items collection
         item_result = await crud.items_collection.update_one(
             {"tag_id": tagid},
-            {"$set": {"status": str(new_status)}}
+            {"$set": {"status": new_status}}
         )
 
         if item_result.modified_count == 0:
