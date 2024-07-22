@@ -149,7 +149,7 @@ async def forgot_password(request: schemas.ForgotPasswordRequest):
     try:
         token = await crud.create_reset_token(request.email_address)
         if token:
-            reset_link = f"http://lfreturnme.com/#/ForgotPasswordEmail..?token={token}"
+            reset_link = f"https://lfreturnme.com/#/ForgotPasswordEmail..?token={token}"
             send_email(request.email_address, reset_link)
             return {"message": "Password reset email sent"}
         else:
