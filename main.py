@@ -175,9 +175,9 @@ async def reset_password(request: schemas.ResetPasswordRequest):
 
 
 def send_email(to_email: str, reset_link: str):
-    msg = MIMEText(f"Click the link to reset your password: {reset_link}")
+    msg = MIMEText(f"Click the link to reset your password: {reset_link}.   Link expires after 5 minutes")
     msg['Subject'] = 'Password Reset Request'
-    msg['From'] = 'your-email@example.com'
+    msg['From'] = 'no-reply@lfreturnme.com'
     msg['To'] = to_email
 
     try:
