@@ -170,7 +170,7 @@ async def create_reset_token(email_address: str) -> str:
         user = await users_collection.find_one({"email_address": email_address})
         if user:
             token = str(uuid.uuid4())
-            expiration_time = datetime.utcnow() + timedelta(hours=1)  # Token valid for 1 hour
+            expiration_time = datetime.utcnow() + timedelta(minutes=5)  # Token valid for 5 minutes
             reset_token_data = {
                 "email_address": email_address,
                 "token": token,
