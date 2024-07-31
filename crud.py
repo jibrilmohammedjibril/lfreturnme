@@ -3,7 +3,7 @@ import json
 import os
 
 import motor.motor_asyncio
-from fastapi import UploadFile
+from fastapi import UploadFile, HTTPException
 
 import schemas
 import uuid
@@ -30,8 +30,29 @@ users_collection = database["users"]
 tags_collection = db["tags"]
 items_collection = db["items"]
 reset_tokens_collection = database["reset_tokens"]
-#####
+newsletters_collection = db["newsletters"]
+# firebase init test begin
 
+# firebase_key_base64 = os.getenv("FIREBASE_KEY_BASE64")
+# if not firebase_key_base64:
+#     raise RuntimeError("FIREBASE_KEY_BASE64 environment variable not set")
+
+# firebase_key_json = base64.b64decode(firebase_key_base64).decode('utf-8')
+# firebase_key_dict = json.loads(firebase_key_json)
+# cred = credentials.Certificate(firebase_key_dict)
+
+# Read Firebase project ID from environment variable
+# firebase_project_id = os.getenv("FIREBASE_PROJECT_ID")
+# if not firebase_project_id:
+#     raise RuntimeError("FIREBASE_PROJECT_ID environment variable not set")
+
+# Initialize Firebase Admin SDK
+#initialize_app(cred, {'storageBucket': f'{firebase_project_id}.appspot.com'})
+# Initialize Firebase app
+#firebase init test end
+
+
+#for github
 firebase_key_base64 = os.getenv("FIREBASE_KEY_BASE64")
 if not firebase_key_base64:
     raise RuntimeError("FIREBASE_KEY_BASE64 environment variable not set")
@@ -53,6 +74,13 @@ firebase_admin.initialize_app(cred, {
     'storageBucket': 'lfreturnme-5a551.appspot.com'
 })
 
+#for local tests
+
+# cred = credentials.Certificate("lfreturnme-5a551-firebase-adminsdk-60kvl-8eb9886962.json")
+# firebase_admin.initialize_app(cred, {
+#     'storageBucket': 'lfreturnme-5a551.appspot.com'
+# })
+#
 
 async def check_credentials(email_address: str) -> bool:
     try:
@@ -96,18 +124,36 @@ async def create_user(user: schemas.Signup) -> schemas.ResponseSignup:
         raise
 
 
+# async def authenticate_user(email_address: str, password: str) -> schemas.ResponseSignup:
+#     try:
+#         user = await users_collection.find_one({"email_address": email_address})
+#         if user and bcrypt.checkpw(password.encode('utf-8'), user['password'].encode('utf-8')):
+#             logger.info("User authenticated successfully: %s", email_address)
+#             return schemas.ResponseSignup(**user)
+#         else:
+#             logger.warning("Authentication failed for user: %s", email_address)
+#             return None
+#     except Exception as e:
+#         logger.error("Error in authenticate_user: %s", e)
+#         raise
+
 async def authenticate_user(email_address: str, password: str) -> schemas.ResponseSignup:
     try:
         user = await users_collection.find_one({"email_address": email_address})
-        if user and bcrypt.checkpw(password.encode('utf-8'), user['password'].encode('utf-8')):
+        if not user:
+            logger.warning("User does not exist: %s", email_address)
+            raise HTTPException(status_code=404, detail="User does not exist")
+        if bcrypt.checkpw(password.encode('utf-8'), user['password'].encode('utf-8')):
             logger.info("User authenticated successfully: %s", email_address)
             return schemas.ResponseSignup(**user)
         else:
-            logger.warning("Authentication failed for user: %s", email_address)
-            return None
+            logger.warning("Invalid password for user: %s", email_address)
+            raise HTTPException(status_code=400, detail="Invalid password")
+    except HTTPException as e:
+        raise e
     except Exception as e:
         logger.error("Error in authenticate_user: %s", e)
-        raise
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 async def get_tag_by_tag1(tag1: str) -> Optional[Tag]:
@@ -154,23 +200,12 @@ def upload_to_firebase(file: UploadFile) -> str:
     return blob.public_url
 
 
-# async def get_user_by_uuid(db: Collection, uuid: str) -> Optional[Dashboard]:
-#     user_data = db.find_one({"uuid": uuid})
-#     if user_data:
-#         user = Dashboard(**user_data)
-#         user.registered_items = calculate_registered_items(user)
-#         user.lost_items = calculate_lost_items(user)
-#         user.found_items = calculate_found_items(user)
-#         return user
-#     return None
-
-
 async def create_reset_token(email_address: str) -> str:
     try:
         user = await users_collection.find_one({"email_address": email_address})
         if user:
             token = str(uuid.uuid4())
-            expiration_time = datetime.utcnow() + timedelta(hours=1)  # Token valid for 1 hour
+            expiration_time = datetime.utcnow() + timedelta(minutes=5)  # Token valid for 5 minutes
             reset_token_data = {
                 "email_address": email_address,
                 "token": token,
@@ -210,3 +245,15 @@ async def update_password(email_address: str, new_password: str) -> bool:
     except Exception as e:
         logger.error("Error in update_password: %s", e)
         raise
+
+
+async def add_newsletter_email(email: str) -> bool:
+    try:
+        existing_email = await newsletters_collection.find_one({"email": email})
+        if existing_email:
+            return False
+        await newsletters_collection.insert_one({"email": email})
+        return True
+    except Exception as e:
+        logger.error("Error in add_newsletter_email: %s", e)
+        raise HTTPException(status_code=500, detail="Internal server error")

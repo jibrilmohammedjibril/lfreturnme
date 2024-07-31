@@ -295,5 +295,10 @@ class ResetPasswordRequest(BaseModel):
     token: str
     new_password: str
 
+
 class UpdateStatusRequest(BaseModel):
     status: str
+
+
+class NewsletterEmail(BaseModel):
+    email: EmailStr

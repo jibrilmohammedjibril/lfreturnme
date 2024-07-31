@@ -76,13 +76,23 @@ async def signup(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+# @app.post("/signin/", response_model=schemas.ResponseSignup)
+# async def signin(user: schemas.Signin):
+#     try:
+#         db_user = await crud.authenticate_user(user.email_address, user.password)
+#         if not db_user:
+#             raise HTTPException(status_code=400, detail="Invalid email or password")
+#         return db_user
+#     except Exception as e:
+#         raise HTTPException(status_code=500, detail="Internal server error")
+
 @app.post("/signin/", response_model=schemas.ResponseSignup)
 async def signin(user: schemas.Signin):
     try:
         db_user = await crud.authenticate_user(user.email_address, user.password)
-        if not db_user:
-            raise HTTPException(status_code=400, detail="Invalid email or password")
         return db_user
+    except HTTPException as e:
+        raise e
     except Exception as e:
         raise HTTPException(status_code=500, detail="Internal server error")
 
@@ -149,7 +159,7 @@ async def forgot_password(request: schemas.ForgotPasswordRequest):
     try:
         token = await crud.create_reset_token(request.email_address)
         if token:
-            reset_link = f"http://your-frontend-url/#/reset-password..?token={token}"
+            reset_link = f"https://lfreturnme.com/#/ForgotPasswordEmail/?token={token}. Link  expires after 5 minutes"
             send_email(request.email_address, reset_link)
             return {"message": "Password reset email sent"}
         else:
@@ -177,7 +187,7 @@ async def reset_password(request: schemas.ResetPasswordRequest):
 def send_email(to_email: str, reset_link: str):
     msg = MIMEText(f"Click the link to reset your password: {reset_link}")
     msg['Subject'] = 'Password Reset Request'
-    msg['From'] = 'your-email@example.com'
+    msg['From'] = 'no_reply@lfreturnme.com'
     msg['To'] = to_email
 
     try:
@@ -240,3 +250,16 @@ async def update_item_status(
         raise e
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/email-sub/", response_model=dict)
+async def subscribe_newsletter(newsletter_email: schemas.NewsletterEmail):
+    try:
+        success = await crud.add_newsletter_email(newsletter_email.email)
+        if not success:
+            raise HTTPException(status_code=400, detail="Email already subscribed")
+        return {"message": "Email subscribed successfully"}
+    except HTTPException as e:
+        raise e
+    except Exception as e:
+        raise HTTPException(status_code=500, detail="Internal server error")
