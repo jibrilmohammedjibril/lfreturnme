@@ -76,15 +76,6 @@ async def signup(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-# @app.post("/signin/", response_model=schemas.ResponseSignup)
-# async def signin(user: schemas.Signin):
-#     try:
-#         db_user = await crud.authenticate_user(user.email_address, user.password)
-#         if not db_user:
-#             raise HTTPException(status_code=400, detail="Invalid email or password")
-#         return db_user
-#     except Exception as e:
-#         raise HTTPException(status_code=500, detail="Internal server error")
 
 @app.post("/signin/", response_model=schemas.ResponseSignup)
 async def signin(user: schemas.Signin):
