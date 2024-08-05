@@ -365,7 +365,7 @@ async def add_found_item(
         send_email(user['email_address'], "Item Found", f"Your item {found.name} has been  found.")
         # send email to lfreturnme
         send_email(lf_email, "Item Found",
-                   f"{user["full_name"]}'s  registered item {item.item_name} has been reported found.")
+                   f"""{user["full_name"]}'s  registered item {item.item_name} has been reported found.""")
 
         return JSONResponse(status_code=200, content={"message": "Item status updated and email sent to user"})
 
