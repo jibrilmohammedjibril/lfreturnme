@@ -181,7 +181,7 @@
 
 
 from pydantic import BaseModel, Field, EmailStr
-from datetime import date
+from datetime import date, datetime
 from typing import Optional, Dict
 from bson import ObjectId
 
@@ -302,3 +302,22 @@ class UpdateStatusRequest(BaseModel):
 
 class NewsletterEmail(BaseModel):
     email: EmailStr
+
+
+class LostFound(BaseModel):
+    item: str
+    name: str
+    location: str
+    date: str
+    tag_id: Optional[str] = None
+    phone_number: str
+    email: EmailStr
+    description: str
+    item_image: str
+
+
+class UpdateProfileRequest(BaseModel):
+    full_name: str
+    email_address: EmailStr
+    address: str
+    profile_picture: str

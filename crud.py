@@ -1,15 +1,17 @@
 import base64
 import json
 import os
+import smtplib
+from email.mime.text import MIMEText
 
 import motor.motor_asyncio
 from fastapi import UploadFile, HTTPException
-
+from motor.motor_asyncio import AsyncIOMotorClient
 import schemas
 import uuid
 import bcrypt
 import logging
-from schemas import Tag, ItemRegistration, Dashboard
+from schemas import Tag, ItemRegistration, Dashboard, UpdateProfileRequest
 from bson import ObjectId
 from pymongo import MongoClient
 import firebase_admin
@@ -74,13 +76,14 @@ firebase_admin.initialize_app(cred, {
     'storageBucket': 'lfreturnme-5a551.appspot.com'
 })
 
-#for local tests
 
+# ##for local tests
+#
 # cred = credentials.Certificate("lfreturnme-5a551-firebase-adminsdk-60kvl-8eb9886962.json")
 # firebase_admin.initialize_app(cred, {
 #     'storageBucket': 'lfreturnme-5a551.appspot.com'
 # })
-#
+
 
 async def check_credentials(email_address: str) -> bool:
     try:
@@ -200,6 +203,19 @@ def upload_to_firebase(file: UploadFile) -> str:
     return blob.public_url
 
 
+from urllib.parse import unquote
+
+
+def delete_from_firebase(url: str) -> None:
+    bucket = storage.bucket()
+    # Extract the blob name from the URL
+    blob_name = url.split("lfreturnme-5a551.appspot.com/")[-1]
+    # Decode percent-encoded characters
+    blob_name = unquote(blob_name)
+    blob = bucket.blob(blob_name)
+    blob.delete()
+
+
 async def create_reset_token(email_address: str) -> str:
     try:
         user = await users_collection.find_one({"email_address": email_address})
@@ -257,3 +273,98 @@ async def add_newsletter_email(email: str) -> bool:
     except Exception as e:
         logger.error("Error in add_newsletter_email: %s", e)
         raise HTTPException(status_code=500, detail="Internal server error")
+
+
+async def add_to_lost(lostfound: schemas.LostFound):
+    result = await db.lost.insert_one(lostfound.dict())
+    return str(result.inserted_id)
+
+
+async def add_to_found(lostfound: schemas.LostFound):
+    result = await db.found.insert_one(lostfound.dict())
+    return str(result.inserted_id)
+
+
+async def find_item_by_tag_id(tag_id: str) -> Optional[ItemRegistration]:
+    print(tag_id)
+    item = await items_collection.find_one({"tag_id": tag_id})
+    return ItemRegistration(**item)
+
+
+async def update_item_status(tag_id: str):
+    result = await db.items.update_one({"tag_id": tag_id}, {"$set": {"status": "1"}})
+    return result.modified_count > 0
+
+
+async def find_user_by_uuid(uuid: str):
+    user = await db.users.find_one({"uuid": uuid})
+    return user
+
+
+def send_email(to_email: str, subject: str, body: str):
+    msg = MIMEText(body)
+    msg["Subject"] = subject
+    msg["From"] = 'lostfound_no_reply@lfreturnme.com'
+    msg["To"] = to_email
+
+    with smtplib.SMTP_SSL('mail.lfreturnme.com', 465) as server:
+        server.login("infonfo@lfreturnme.com", "lfreturnme@1")
+        server.sendmail("infonfo@lfreturnme.com", to_email, msg.as_string())
+        print("Email sent successfully!")
+
+
+async def update_item_status_full(uuid: str, tagid: str, new_status: str, users_collection, items_collection):
+    try:
+        # Find user by UUID
+        user = await users_collection.find_one({"uuid": uuid})
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
+
+        # Check if the item with the given tagid exists in the user's items
+        if tagid not in user.get("items", {}):
+            raise HTTPException(status_code=404, detail=f"Item with tag ID {tagid} not found for user")
+
+        # Update the item's status in the user's items
+        user["items"][tagid]["status"] = str(new_status)
+
+        # Update user document with the modified items dictionary
+        user_result = await users_collection.update_one(
+            {"uuid": uuid},
+            {"$set": {"items": user["items"]}}
+        )
+
+        if user_result.modified_count == 0:
+            raise HTTPException(status_code=500, detail="Failed to update item status in user's items")
+
+        # Find item in the items collection by tagid
+        item = await items_collection.find_one({"tag_id": tagid})
+        if not item:
+            raise HTTPException(status_code=404, detail="Item not found in items collection")
+
+        # Update the item's status in the items collection
+        item_result = await items_collection.update_one(
+            {"tag_id": tagid},
+            {"$set": {"status": new_status}}
+        )
+
+        if item_result.modified_count == 0:
+            raise HTTPException(status_code=500, detail="Failed to update item status in items collection")
+
+        return {"message": "Item status updated successfully", "item_tagid": tagid, "new_status": new_status}
+
+    except HTTPException as e:
+        raise e
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+async def get_user_by_uuid(user_uuid: str):
+    return await users_collection.find_one({"uuid": user_uuid})
+
+
+async def update_user_profile(user_uuid: str, update_data: dict):
+    result = await users_collection.update_one(
+        {"uuid": user_uuid},
+        {"$set": update_data}
+    )
+    return result
