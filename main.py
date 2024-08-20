@@ -370,16 +370,16 @@ async def add_found_item(
         return JSONResponse(status_code=200, content={"message": "Item status updated and email sent to user"})
 
 
-@app.put("/update-profile/{user_uuid}")
+@app.put("/update-profile/")
 async def update_profile(
-    user_uuid: str,
-    full_name: str = Form(...),
-    email_address: str = Form(...),
-    address: str = Form(...),
-    profile_picture: UploadFile = File(None)
+        user_uuid: str = Form(...),
+        full_name: str = Form(...),
+        email_address: str = Form(...),
+        address: str = Form(...),
+        profile_picture: UploadFile = File(None)
 ):
     # Retrieve the current user profile from MongoDB
-    user = await crud.get_user_by_uuid(user_uuid)
+    user = await  crud.get_user_by_uuid(user_uuid)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
 
