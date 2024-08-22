@@ -2,8 +2,9 @@ import base64
 import json
 import os
 import smtplib
+from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
-
+import random
 import motor.motor_asyncio
 from fastapi import UploadFile, HTTPException
 from motor.motor_asyncio import AsyncIOMotorClient
@@ -20,41 +21,22 @@ from typing import Optional
 from pymongo.collection import Collection
 from datetime import datetime, timedelta
 from pymongo import ReturnDocument
+from dotenv import load_dotenv
+
+load_dotenv()
 
 logger = logging.getLogger(__name__)
 
 # MongoDB connection setup
-client = motor.motor_asyncio.AsyncIOMotorClient(
-    "mongodb+srv://Admin:AITeKaIUZtKdYbvu@lfreturnme.vjjpets.mongodb.net/?retryWrites=true&w=majority&appName=LFReturnMe")
-database = client["LFReturnMe"]
-db = client["LFReturnMe"]
-users_collection = database["users"]
+client = motor.motor_asyncio.AsyncIOMotorClient(os.getenv("MONGODB_URL"))
+db = client[os.getenv("DATABASE_NAME")]
+users_collection = db["users"]
 tags_collection = db["tags"]
 items_collection = db["items"]
-reset_tokens_collection = database["reset_tokens"]
+reset_tokens_collection = db["reset_tokens"]
 newsletters_collection = db["newsletters"]
-# firebase init test begin
+otp_collection = db["otp_collection"]
 
-# firebase_key_base64 = os.getenv("FIREBASE_KEY_BASE64")
-# if not firebase_key_base64:
-#     raise RuntimeError("FIREBASE_KEY_BASE64 environment variable not set")
-
-# firebase_key_json = base64.b64decode(firebase_key_base64).decode('utf-8')
-# firebase_key_dict = json.loads(firebase_key_json)
-# cred = credentials.Certificate(firebase_key_dict)
-
-# Read Firebase project ID from environment variable
-# firebase_project_id = os.getenv("FIREBASE_PROJECT_ID")
-# if not firebase_project_id:
-#     raise RuntimeError("FIREBASE_PROJECT_ID environment variable not set")
-
-# Initialize Firebase Admin SDK
-#initialize_app(cred, {'storageBucket': f'{firebase_project_id}.appspot.com'})
-# Initialize Firebase app
-#firebase init test end
-
-
-#for github
 firebase_key_base64 = os.getenv("FIREBASE_KEY_BASE64")
 if not firebase_key_base64:
     raise RuntimeError("FIREBASE_KEY_BASE64 environment variable not set")
@@ -68,21 +50,9 @@ firebase_project_id = os.getenv("FIREBASE_PROJECT_ID")
 if not firebase_project_id:
     raise RuntimeError("FIREBASE_PROJECT_ID environment variable not set")
 
-# Initialize Firebase Admin SDK
-#initialize_app(cred, {'storageBucket': f'{firebase_project_id}.appspot.com'})
-# Initialize Firebase app
-#cred = credentials.Certificate("lfreturnme-5a551-firebase-adminsdk-60kvl-8eb9886962.json")
 firebase_admin.initialize_app(cred, {
-    'storageBucket': 'lfreturnme-5a551.appspot.com'
+    'storageBucket': os.getenv("FIREBASE_PROJECT_ID_INIT")
 })
-
-
-# ##for local tests
-#
-# cred = credentials.Certificate("lfreturnme-5a551-firebase-adminsdk-60kvl-8eb9886962.json")
-# firebase_admin.initialize_app(cred, {
-#     'storageBucket': 'lfreturnme-5a551.appspot.com'
-# })
 
 
 async def check_credentials(email_address: str) -> bool:
@@ -114,6 +84,7 @@ async def create_user(user: schemas.Signup) -> schemas.ResponseSignup:
                 "valid_id_type": user.valid_id_type,
                 "id_card_image": user.id_card_image,
                 "password": hashed_password.decode('utf-8'),
+                "is_verified": user.is_verified
 
             }
             await users_collection.insert_one(user_data)
@@ -127,18 +98,6 @@ async def create_user(user: schemas.Signup) -> schemas.ResponseSignup:
         raise
 
 
-# async def authenticate_user(email_address: str, password: str) -> schemas.ResponseSignup:
-#     try:
-#         user = await users_collection.find_one({"email_address": email_address})
-#         if user and bcrypt.checkpw(password.encode('utf-8'), user['password'].encode('utf-8')):
-#             logger.info("User authenticated successfully: %s", email_address)
-#             return schemas.ResponseSignup(**user)
-#         else:
-#             logger.warning("Authentication failed for user: %s", email_address)
-#             return None
-#     except Exception as e:
-#         logger.error("Error in authenticate_user: %s", e)
-#         raise
 
 async def authenticate_user(email_address: str, password: str) -> schemas.ResponseSignup:
     try:
@@ -301,18 +260,6 @@ async def find_user_by_uuid(uuid: str):
     return user
 
 
-def send_email(to_email: str, subject: str, body: str):
-    msg = MIMEText(body)
-    msg["Subject"] = subject
-    msg["From"] = 'lostfound_no_reply@lfreturnme.com'
-    msg["To"] = to_email
-
-    with smtplib.SMTP_SSL('mail.lfreturnme.com', 465) as server:
-        server.login("infonfo@lfreturnme.com", "lfreturnme@1")
-        server.sendmail("infonfo@lfreturnme.com", to_email, msg.as_string())
-        print("Email sent successfully!")
-
-
 async def update_item_status_full(uuid: str, tagid: str, new_status: str, users_collection, items_collection):
     try:
         # Find user by UUID
@@ -368,3 +315,81 @@ async def update_user_profile(user_uuid: str, update_data: dict):
         {"$set": update_data}
     )
     return result
+
+
+def generate_otp():
+    return random.randint(100000, 999999)
+
+
+# Function to send email with OTP
+def send_email_otp(receiver_email: str, otp: int):
+    try:
+        sender_email = os.getenv("EMAIL_USER")
+        sender_password = os.getenv("EMAIL_PASS")
+        sender_host = os.getenv("EMAIL_HOST")
+        # Create the email content
+        message = MIMEMultipart("alternative")
+        message["Subject"] = "Your OTP Code"
+        message["From"] = sender_email
+        message["To"] = receiver_email
+
+        text = f"Your OTP code is {otp}. It is valid for 5 minutes."
+        html = f"""\
+        <html>
+          <body>
+            <p>Your OTP code is <strong>{otp}</strong>.<br>
+               It is valid for 5 minutes.<br>
+               Please use it to complete your verification process.
+            </p>
+          </body>
+        </html>
+        """
+
+        part1 = MIMEText(text, "plain")
+        part2 = MIMEText(html, "html")
+        message.attach(part1)
+        message.attach(part2)
+
+        server = smtplib.SMTP_SSL(sender_host, 465)  # Using Gmail's SMTP server
+        server.login(sender_email, sender_password)
+        server.sendmail(sender_email, receiver_email, message.as_string())
+        server.quit()
+
+        print(f"OTP sent successfully to {receiver_email}")
+    except Exception as e:
+        print(f"Failed to send email: {e}")
+        raise HTTPException(status_code=500, detail="Failed to send OTP email")
+
+
+def send_email(to_email: str, subject: str, body: str):
+    msg = MIMEText(body)
+    msg["Subject"] = subject
+    msg["From"] = 'lostfound_no_reply@lfreturnme.com'
+    msg["To"] = to_email
+    sender_email = os.getenv("EMAIL_USER")
+    sender_password = os.getenv("EMAIL_PASS")
+    sender_host = os.getenv("EMAIL_HOST")
+
+    with smtplib.SMTP_SSL(sender_host, 465) as server:
+        server.login(sender_email, sender_password)
+        server.sendmail(sender_email, to_email, msg.as_string())
+        print("Email sent successfully!")
+
+
+async def verify_user_email(email: str):
+    # Find the user by email
+    user = await users_collection.find_one({"email_address": email})
+
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    # Update the is_verified field to True
+    result = await users_collection.update_one(
+        {"_id": user["_id"]},
+        {"$set": {"is_verified": True}}
+    )
+
+    if result.modified_count == 1:
+        return {"message": "User verification status updated successfully"}
+    else:
+        raise HTTPException(status_code=500, detail="Failed to update user verification status")

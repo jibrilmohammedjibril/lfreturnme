@@ -1,10 +1,10 @@
+import os
 import smtplib
 from email.mime.text import MIMEText
 from typing import Optional
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi import Form, UploadFile, File
-from datetime import datetime
-
+from fastapi import Form, UploadFile, File, BackgroundTasks
+from datetime import datetime, timedelta
 from firebase_admin import storage
 from pydantic import EmailStr
 import schemas
@@ -16,6 +16,9 @@ from fastapi import FastAPI, HTTPException, Query
 from fastapi.responses import JSONResponse
 import logging
 import time
+from dotenv import load_dotenv
+
+load_dotenv()
 
 app = FastAPI()
 app.add_middleware(
@@ -67,6 +70,7 @@ async def signup(
             profile_picture=profile_picture_url,
             id_card_image=id_card_image_url,
             password=password,
+            is_verified=False,
 
         )
 
@@ -178,10 +182,13 @@ def send_email_reset(to_email: str, reset_link: str):
     msg['Subject'] = 'Password Reset Request'
     msg['From'] = 'no_reply@lfreturnme.com'
     msg['To'] = to_email
+    sender_email = os.getenv("EMAIL_USER")
+    sender_password = os.getenv("EMAIL_PASS")
+    sender_host = os.getenv("EMAIL_HOST")
 
     try:
-        with smtplib.SMTP_SSL('mail.lfreturnme.com', 465) as server:
-            server.login("infonfo@lfreturnme.com", "lfreturnme@1")
+        with smtplib.SMTP_SSL(sender_host, 465) as server:
+            server.login(sender_email, sender_password)
             server.sendmail("infonfo@lfreturnme.com", to_email, msg.as_string())
             print("Email sent successfully!")
     except Exception as e:
@@ -411,3 +418,37 @@ async def update_profile(
         raise HTTPException(status_code=404, detail="User not found")
 
     return {"message": "User profile updated successfully"}
+
+
+@app.post("/api/send-otp")
+async def send_otp(request: schemas.OTPRequest):
+    otp = crud.generate_otp()
+    crud.send_email_otp(request.email, otp)
+
+    otp_data = {
+        "email": request.email,
+        "otp": otp,
+        "timestamp": datetime.utcnow(),
+        "expires_at": datetime.utcnow() + timedelta(minutes=5)
+    }
+    crud.otp_collection.insert_one(otp_data)
+
+    return {"message": "OTP sent successfully to your email."}  # Remove OTP from response in production
+
+
+# API endpoint to verify OTP
+@app.post("/api/verify-otp")
+async def verify_otp(request: schemas.OTPVerify):
+    otp_entry = await crud.otp_collection.find_one({"email": request.email, "otp": request.otp})
+
+    if not otp_entry:
+        raise HTTPException(status_code=404, detail="Invalid OTP or email")
+
+    if datetime.utcnow() > otp_entry['expires_at']:
+        await crud.otp_collection.delete_one({"_id": otp_entry['_id']})
+        raise HTTPException(status_code=400, detail="OTP has expired")
+
+    # OTP is valid, proceed with your operation and then delete the OTP
+    await crud.otp_collection.delete_one({"_id": otp_entry['_id']})
+    await crud.verify_user_email(request.email)
+    return {"message": "OTP verified successfully"}
