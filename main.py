@@ -16,9 +16,6 @@ from fastapi import FastAPI, HTTPException, Query
 from fastapi.responses import JSONResponse
 import logging
 import time
-from dotenv import load_dotenv
-
-load_dotenv()
 
 app = FastAPI()
 app.add_middleware(
@@ -446,9 +443,9 @@ async def verify_otp(request: schemas.OTPVerify):
 
     if datetime.utcnow() > otp_entry['expires_at']:
         await crud.otp_collection.delete_one({"_id": otp_entry['_id']})
+        await crud.verify_user_email(request.email)
         raise HTTPException(status_code=400, detail="OTP has expired")
 
     # OTP is valid, proceed with your operation and then delete the OTP
     await crud.otp_collection.delete_one({"_id": otp_entry['_id']})
-    await crud.verify_user_email(request.email)
     return {"message": "OTP verified successfully"}

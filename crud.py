@@ -98,7 +98,6 @@ async def create_user(user: schemas.Signup) -> schemas.ResponseSignup:
         raise
 
 
-
 async def authenticate_user(email_address: str, password: str) -> schemas.ResponseSignup:
     try:
         user = await users_collection.find_one({"email_address": email_address})
