@@ -85,6 +85,7 @@ async def signup(
 @app.post("/signin/", response_model=schemas.ResponseSignup)
 async def signin(user: schemas.Signin):
     try:
+        user.email_address = user.email_address.lower()
         db_user = await crud.authenticate_user(user.email_address, user.password)
         return db_user
     except HTTPException as e:
