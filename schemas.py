@@ -81,6 +81,7 @@ class ResponseSignup(BaseModel):
     id_card_image: Optional[str] = None
     password: Optional[str] = None
     is_verified: Optional[bool] = None
+    items: Dict[str, ItemRegistration] = {}
 
 
 class Dashboard(BaseModel):

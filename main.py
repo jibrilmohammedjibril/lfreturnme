@@ -450,3 +450,31 @@ async def verify_otp(request: schemas.OTPVerify):
     # OTP is valid, proceed with your operation and then delete the OTP
     await crud.otp_collection.delete_one({"_id": otp_entry['_id']})
     return {"message": "OTP verified successfully"}
+
+
+@app.get("/dashboard/{uuid}", response_model=schemas.ResponseSignup)
+async def get_user_dashboard(uuid: str):
+    user = await crud.db["users"].find_one({"uuid": uuid})
+
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    # Convert MongoDB user document to ResponseSignup model
+    user_data = schemas.ResponseSignup(
+        uuid=user.get("uuid"),
+        full_name=user.get("full_name"),
+        email_address=user.get("email_address"),
+        date_of_birth=user.get("date_of_birth"),
+        address=user.get("address"),
+        id_no=user.get("id_no"),
+        profile_picture=user.get("profile_picture"),
+        phone_number=user.get("phone_number"),
+        gender=user.get("gender"),
+        valid_id_type=user.get("valid_id_type"),
+        id_card_image=user.get("id_card_image"),
+        password=user.get("password"),
+        is_verified=user.get("is_verified"),
+        items=user.get("items", {})  # Assuming items are stored as a dictionary
+    )
+
+    return user_data
