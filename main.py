@@ -437,18 +437,24 @@ async def send_otp(request: schemas.OTPRequest):
 # API endpoint to verify OTP
 @app.post("/api/verify-otp")
 async def verify_otp(request: schemas.OTPVerify):
+    # Find the OTP entry in the collection
     otp_entry = await crud.otp_collection.find_one({"email": request.email, "otp": request.otp})
 
     if not otp_entry:
         raise HTTPException(status_code=404, detail="Invalid OTP or email")
 
+    # Check if the OTP has expired
     if datetime.utcnow() > otp_entry['expires_at']:
+        # Delete the expired OTP
         await crud.otp_collection.delete_one({"_id": otp_entry['_id']})
-        await crud.verify_user_email(request.email)
         raise HTTPException(status_code=400, detail="OTP has expired")
 
-    # OTP is valid, proceed with your operation and then delete the OTP
+    # OTP is valid, proceed to verify the user's email
+    await crud.verify_user_email(request.email)
+
+    # Delete the OTP after successful verification
     await crud.otp_collection.delete_one({"_id": otp_entry['_id']})
+
     return {"message": "OTP verified successfully"}
 
 
