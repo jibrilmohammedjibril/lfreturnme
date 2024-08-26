@@ -392,13 +392,13 @@ async def update_profile(
     current_picture_url = user.get("profile_picture")
 
     # Create the update data dictionary
-    update_data = {
-        "full_name": full_name,
-        "email_address": email_address,
-        "address": address,
-        "profile_picture": profile_picture
-    }
+    update_data = schemas.UpdateProfileRequest(
+        full_name=full_name,
+        email_address=email_address,
+        address=address,
+        profile_picture=profile_picture
 
+    )
     # Handle the profile picture upload if provided
     if profile_picture:
         # Delete the old profile picture from Firebase Storage if it exists
