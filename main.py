@@ -395,7 +395,8 @@ async def update_profile(
     update_data = {
         "full_name": full_name,
         "email_address": email_address,
-        "address": address
+        "address": address,
+        "profile_picture": profile_picture
     }
 
     # Handle the profile picture upload if provided
@@ -464,6 +465,7 @@ async def get_user_dashboard(uuid: str):
 
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
+    items = user.get("items", {})
 
     # Convert MongoDB user document to ResponseSignup model
     user_data = schemas.ResponseSignup(

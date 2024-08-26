@@ -46,9 +46,9 @@ firebase_key_dict = json.loads(firebase_key_json)
 cred = credentials.Certificate(firebase_key_dict)
 
 # Read Firebase project ID from environment variable
-firebase_project_id = os.getenv("FIREBASE_PROJECT_ID")
-if not firebase_project_id:
-    raise RuntimeError("FIREBASE_PROJECT_ID environment variable not set")
+#firebase_project_id = os.getenv("FIREBASE_PROJECT_ID")
+#if not firebase_project_id:
+ #   raise RuntimeError("FIREBASE_PROJECT_ID environment variable not set")
 
 firebase_admin.initialize_app(cred, {
     'storageBucket': os.getenv("FIREBASE_PROJECT_ID_INIT")
