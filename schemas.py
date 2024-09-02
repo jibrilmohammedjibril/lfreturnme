@@ -30,6 +30,11 @@ class ItemRegistration(BaseModel):
     uuid: str
     registered_date: Optional[str] = None
     status: Optional[str] = None
+    subscription_status: Optional[str] = None
+    tier: Optional[str] = None
+
+
+
 
 
 class Signup(BaseModel):
