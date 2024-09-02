@@ -29,9 +29,9 @@ collection = db["tags"]
 
 # Define the update operation
 update_operation = {
-    "$unset": {
-        "status": ""
-    }
+        "$set": {
+            "subscription_status": "inactive"
+        }
 }
 
 
