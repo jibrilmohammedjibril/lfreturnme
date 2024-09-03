@@ -139,9 +139,6 @@ class LostFound(BaseModel):
 
 
 class UpdateProfileRequest(BaseModel):
-    full_name: str
-    email_address: EmailStr
-    address: str
     profile_picture: str
 
 

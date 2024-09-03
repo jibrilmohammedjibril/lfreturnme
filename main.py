@@ -375,6 +375,9 @@ async def add_found_item(
         return JSONResponse(status_code=200, content={"message": "Item status updated and email sent to user"})
 
 
+from fastapi import Form, File, UploadFile, HTTPException
+
+
 @app.put("/update-profile/")
 async def update_profile(
         user_uuid: str = Form(...),
@@ -384,34 +387,29 @@ async def update_profile(
         profile_picture: UploadFile = File(None)
 ):
     # Retrieve the current user profile from MongoDB
-    user = await  crud.get_user_by_uuid(user_uuid)
+    user = await crud.get_user_by_uuid(user_uuid)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
 
-    # Extract current profile picture URL if exists
+    # Extract current profile picture URL if it exists
     current_picture_url = user.get("profile_picture")
 
-    # Create the update data dictionary
-    update_data = schemas.UpdateProfileRequest(
-        full_name=full_name,
-        email_address=email_address,
-        address=address,
-        profile_picture=profile_picture
-
-    )
     # Handle the profile picture upload if provided
-    if profile_picture:
-        # Delete the old profile picture from Firebase Storage if it exists
-        if current_picture_url:
-            crud.delete_from_firebase(current_picture_url)
+    profile_picture_url = upload_to_firebase(profile_picture) if profile_picture else current_picture_url
 
-        # Upload the new file directly to Firebase Storage
-        profile_picture_url = upload_to_firebase(profile_picture)
-        update_data["profile_picture"] = profile_picture_url
+    # Create the update data dictionary
+    update_data = {
+        "full_name": full_name,
+        "email_address": email_address,
+        "address": address,
+        "profile_picture": profile_picture_url
+    }
 
     # Perform the update operation
     result = await crud.update_user_profile(user_uuid, update_data)
 
+    if current_picture_url:
+        crud.delete_from_firebase(current_picture_url)
     # Check if the update was successful
     if result.matched_count == 0:
         raise HTTPException(status_code=404, detail="User not found")

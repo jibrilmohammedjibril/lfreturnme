@@ -308,7 +308,7 @@ async def get_user_by_uuid(user_uuid: str):
     return await users_collection.find_one({"uuid": user_uuid})
 
 
-async def update_user_profile(user_uuid: str, update_data: UpdateProfileRequest):
+async def update_user_profile(user_uuid: str, update_data: dict):
     result = await users_collection.update_one(
         {"uuid": user_uuid},
         {"$set": update_data}
