@@ -3,7 +3,7 @@ import smtplib
 from email.mime.text import MIMEText
 from typing import Optional
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi import Form, UploadFile, File, BackgroundTasks
+from fastapi import Form, UploadFile, File, BackgroundTasks, Request
 from datetime import datetime, timedelta
 from firebase_admin import storage
 from pydantic import EmailStr
@@ -375,9 +375,6 @@ async def add_found_item(
         return JSONResponse(status_code=200, content={"message": "Item status updated and email sent to user"})
 
 
-from fastapi import Form, File, UploadFile, HTTPException
-
-
 @app.put("/update-profile/")
 async def update_profile(
         user_uuid: str = Form(...),
@@ -484,3 +481,42 @@ async def get_user_dashboard(uuid: str):
     )
 
     return user_data
+
+
+@app.get("/subscriptions/update")
+async def fetch_and_update_subscriptions(background_tasks: BackgroundTasks):
+    active_subscriptions = await crud.get_active_subscriptions()
+
+    # Fetch details and update each subscription
+    for sub in active_subscriptions:
+        subscription_code = sub['subscription_code']
+        tier = sub['plan']['name']  # Assuming 'plan' contains the subscription tier
+        status = sub['status']  # Assuming 'status' holds the subscription status
+
+        # Update the user's subscription status and tier
+        background_tasks.add_task(crud.update_user_subscription, subscription_code, status, tier)
+
+    return {"message": "Subscriptions update process started."}
+
+
+# Paystack Webhook to update subscription status
+@app.post("/webhook")
+async def paystack_webhook(request: Request):
+    payload = await request.json()
+    logging.info(payload)
+    print(payload)
+    event = payload.get("event")
+    subscription_code = payload["data"]["subscription_code"]
+
+    if event in ["subscription.disable", "subscription.expired"]:
+        # Handle subscription cancellation
+        await crud.update_user_subscription(subscription_code, "inactive", None)
+        return {"message": "Subscription marked as inactive"}
+
+    elif event in ["subscription.create", "subscription.enable"]:
+        # Handle subscription creation or reactivation
+        tier = payload["data"]["plan"]["name"]
+        await crud.update_user_subscription(subscription_code, "active", tier)
+        return {"message": "Subscription marked as active"}
+
+    return {"message": "Event not processed"}

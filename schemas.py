@@ -34,9 +34,6 @@ class ItemRegistration(BaseModel):
     tier: Optional[str] = None
 
 
-
-
-
 class Signup(BaseModel):
     uuid: Optional[str] = None
     full_name: str
@@ -150,3 +147,9 @@ class OTPRequest(BaseModel):
 class OTPVerify(BaseModel):
     email: EmailStr
     otp: int
+
+
+class SubscriptionUpdate(BaseModel):
+    subscription_code: str = Field(..., description="The subscription code to update")
+    subscription_status: str = Field(..., description="The status of the subscription")
+    tier: Optional[str] = Field(None, description="Subscription tier (optional for inactive subscriptions)")

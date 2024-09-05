@@ -5,6 +5,7 @@ import smtplib
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 import random
+import httpx
 import motor.motor_asyncio
 from fastapi import UploadFile, HTTPException
 from motor.motor_asyncio import AsyncIOMotorClient
@@ -44,15 +45,11 @@ if not firebase_key_base64:
 firebase_key_json = base64.b64decode(firebase_key_base64).decode('utf-8')
 firebase_key_dict = json.loads(firebase_key_json)
 cred = credentials.Certificate(firebase_key_dict)
-
-# Read Firebase project ID from environment variable
-#firebase_project_id = os.getenv("FIREBASE_PROJECT_ID")
-#if not firebase_project_id:
- #   raise RuntimeError("FIREBASE_PROJECT_ID environment variable not set")
-
 firebase_admin.initialize_app(cred, {
-    'storageBucket': os.getenv("FIREBASE_PROJECT_ID_INIT")
-})
+    'storageBucket': os.getenv("FIREBASE_PROJECT_ID_INIT")})
+
+paystack_secret_key = os.getenv("PAYSTACK_SECRET_KEY")
+paystack_base_url = os.getenv("PAYSTACK_BASE_URL")
 
 
 async def check_credentials(email_address: str) -> bool:
@@ -392,3 +389,37 @@ async def verify_user_email(email: str):
         return {"message": "User verification status updated successfully"}
     else:
         raise HTTPException(status_code=500, detail="Failed to update user verification status")
+
+
+async def update_user_subscription(subscription_code: str, subscription_status: str, tier: Optional[str] = None):
+    # Find the user by the subscription code (assuming you store this in the user's document)
+    user = users_collection.find_one({"items.tag_id": subscription_code})
+
+    if user:
+        # Update the user's tag information
+        update_fields = {
+            f"items.{subscription_code}.subscription_status": subscription_status,
+        }
+
+        if tier:
+            update_fields[f"items.{subscription_code}.tier"] = tier
+
+        await users_collection.update_one(
+            {"_id": ObjectId(user["_id"]), f"items.{subscription_code}.tag_id": subscription_code},
+            {"$set": update_fields}
+        )
+        return {"message": f"Subscription status for {subscription_code} updated successfully."}
+
+    return {"message": f"Subscription code {subscription_code} not found."}
+
+
+async def get_active_subscriptions():
+    headers = {
+        "Authorization": f"Bearer {paystack_secret_key}",
+        "Content-Type": "application/json",
+    }
+    async with httpx.AsyncClient() as client:
+        response = await client.get(f"{paystack_base_url}/subscription", headers=headers)
+        data = response.json()
+        active_subscriptions = [sub for sub in data['data'] if sub['status'] == 'active']
+        return active_subscriptions
