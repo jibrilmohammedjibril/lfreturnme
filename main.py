@@ -502,7 +502,15 @@ async def fetch_and_update_subscriptions(background_tasks: BackgroundTasks):
 # Paystack Webhook to update subscription status
 @app.post("/webhook")
 async def paystack_webhook(request: Request):
-    payload = await request.json()
+    #payload = await request.json()
+    try:
+        body = await request.body()  # Read raw body
+        if not body:
+            raise HTTPException(status_code=400, detail="Empty body in the request.")
+
+        payload = await request.json()  # Parse JSON if body is not empty
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid JSON in request body.")
     logging.info(payload)
     print(payload)
     event = payload.get("event")
