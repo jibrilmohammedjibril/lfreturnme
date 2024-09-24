@@ -500,38 +500,38 @@ async def fetch_and_update_subscriptions(background_tasks: BackgroundTasks):
 
 
 # Paystack Webhook to update subscription status
-# @app.post("/webhook")
-# async def paystack_webhook(request: Request):
-#     #payload = await request.json()
-#     try:
-#         body = await request.body()  # Read raw body
-#         if not body:
-#             raise HTTPException(status_code=400, detail="Empty body in the request.")
+@app.post("/webhook")
+async def paystack_webhook(request: Request):
+    #payload = await request.json()
+    try:
+        body = await request.body()  # Read raw body
+        if not body:
+            raise HTTPException(status_code=400, detail="Empty body in the request.")
 
-#         payload = await request.json()  # Parse JSON if body is not empty
-#     except ValueError:
-#         raise HTTPException(status_code=400, detail="Invalid JSON in request body.")
-#     logging.info(payload)
-#     print(payload)
-#     event = payload.get("event")
-#     subscription_code = payload["data"]["subscription_code"]
+        payload = await request.json()  # Parse JSON if body is not empty
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid JSON in request body.")
+    logging.info(payload)
+    print(payload)
+    event = payload.get("event")
+    subscription_code = payload["data"]["subscription_code"]
 
-#     if event in ["subscription.disable", "subscription.expired"]:
-#         # Handle subscription cancellation
-#         await crud.update_user_subscription(subscription_code, "inactive", None)
-#         return {"message": "Subscription marked as inactive"}
+    if event in ["subscription.disable", "subscription.expired"]:
+        # Handle subscription cancellation
+        await crud.update_user_subscription(subscription_code, "inactive", None)
+        return {"message": "Subscription marked as inactive"}
 
-#     elif event in ["subscription.create", "subscription.enable"]:
-#         # Handle subscription creation or reactivation
-#         tier = payload["data"]["plan"]["name"]
-#         await crud.update_user_subscription(subscription_code, "active", tier)
-#         return {"message": "Subscription marked as active"}
+    elif event in ["subscription.create", "subscription.enable"]:
+        # Handle subscription creation or reactivation
+        tier = payload["data"]["plan"]["name"]
+        await crud.update_user_subscription(subscription_code, "active", tier)
+        return {"message": "Subscription marked as active"}
 
-#     return {"message": "Event not processed"}
+    return {"message": "Event not processed"}
 
-@app.post("/my/webhook/url")
-async def webhook(request: Request):
-    # Retrieve the request's body
-    payload = await request.json()  # Similar to req.body in Express
-    # Do something with the event (payload)
-    return {"message": "Webhook received"}, 200  # Send HTTP 200 response
+# @app.post("/my/webhook/url")
+# async def webhook(request: Request):
+#     # Retrieve the request's body
+#     payload = await request.json()  # Similar to req.body in Express
+#     # Do something with the event (payload)
+#     return {"message": "Webhook received"}, 200  # Send HTTP 200 response
