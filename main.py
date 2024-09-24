@@ -535,3 +535,14 @@ async def paystack_webhook(request: Request):
 #     payload = await request.json()  # Similar to req.body in Express
 #     # Do something with the event (payload)
 #     return {"message": "Webhook received"}, 200  # Send HTTP 200 response
+
+
+@app.post("/paystack-webhook")
+async def paystack_webhook(payload:PaystackWebhookPayload):
+    logging.info(payload)
+    #if payload.event == "charge.success":
+    #    payment_data = payload.data
+        # Do something with payment data
+        # Example: Save payment data to database, send email to customer, update order status, etc.
+        #return {"message":"Payment successful"} # redirect to a payment succesful page
+    return {"message":"Payment failed"} # can also redirect users to a page to try again or contact support
