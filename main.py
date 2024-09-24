@@ -16,6 +16,7 @@ from fastapi import FastAPI, HTTPException, Query
 from fastapi.responses import JSONResponse
 import logging
 import time
+from schema import PaystackWebhookPayload
 
 app = FastAPI()
 app.add_middleware(
