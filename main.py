@@ -594,4 +594,4 @@ async def paystack_webhook(request: Request):
         # Handle subscription disabled event
         print(f"Subscription disabled: {event['data']['subscription_code']}")
 
-    return {"status": "success"}
+    return {"status":"success"}
