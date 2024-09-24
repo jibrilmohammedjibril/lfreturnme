@@ -17,6 +17,11 @@ from fastapi.responses import JSONResponse
 import logging
 import time
 from schemas import PaystackWebhookPayload
+from fastapi import FastAPI, Request, HTTPException
+import hmac
+import hashlib
+import json
+
 
 app = FastAPI()
 app.add_middleware(
@@ -501,49 +506,92 @@ async def fetch_and_update_subscriptions(background_tasks: BackgroundTasks):
 
 
 # Paystack Webhook to update subscription status
-@app.post("/webhook")
+# @app.post("/webhook")
+# async def paystack_webhook(request: Request):
+#     #payload = await request.json()
+#     try:
+#         body = await request.body()  # Read raw body
+#         if not body:
+#             raise HTTPException(status_code=400, detail="Empty body in the request.")
+
+#         payload = await request.json()  # Parse JSON if body is not empty
+#     except ValueError:
+#         raise HTTPException(status_code=400, detail="Invalid JSON in request body.")
+#     logging.info(payload)
+#     print(payload)
+#     # event = payload.get("event")
+#     # subscription_code = payload["data"]["subscription_code"]
+
+#     # if event in ["subscription.disable", "subscription.expired"]:
+#     #     # Handle subscription cancellation
+#     #     await crud.update_user_subscription(subscription_code, "inactive", None)
+#     #     return {"message": "Subscription marked as inactive"}
+
+#     # elif event in ["subscription.create", "subscription.enable"]:
+#     #     # Handle subscription creation or reactivation
+#     #     tier = payload["data"]["plan"]["name"]
+#     #     await crud.update_user_subscription(subscription_code, "active", tier)
+#     #     return {"message": "Subscription marked as active"}
+
+#     return {"message": "Event not processed"}
+
+# # @app.post("/my/webhook/url")
+# # async def webhook(request: Request):
+# #     # Retrieve the request's body
+# #     payload = await request.json()  # Similar to req.body in Express
+# #     # Do something with the event (payload)
+# #     return {"message": "Webhook received"}, 200  # Send HTTP 200 response
+
+
+# @app.post("/paystack-webhook")
+# async def paystack_webhook(payload:PaystackWebhookPayload):
+#     logging.info(payload)
+#     #if payload.event == "charge.success":
+#     #    payment_data = payload.data
+#         # Do something with payment data
+#         # Example: Save payment data to database, send email to customer, update order status, etc.
+#         #return {"message":"Payment successful"} # redirect to a payment succesful page
+#     return {"message":"Payment failed"} # can also redirect users to a page to try again or contact support
+
+PAYSTACK_SECRET_KEY = "sk_test_94963cced904b3899da00773517d076436e5397d"
+
+# Helper function to verify Paystack signature
+def verify_paystack_signature(request_body: str, received_signature: str) -> bool:
+    computed_signature = hmac.new(
+        PAYSTACK_SECRET_KEY.encode("utf-8"),
+        request_body.encode("utf-8"),
+        hashlib.sha512
+    ).hexdigest()
+
+    return hmac.compare_digest(computed_signature, received_signature)
+
+@app.post("/webhook/paystack")
 async def paystack_webhook(request: Request):
-    #payload = await request.json()
-    try:
-        body = await request.body()  # Read raw body
-        if not body:
-            raise HTTPException(status_code=400, detail="Empty body in the request.")
+    # Get the request body
+    payload = await request.body()
 
-        payload = await request.json()  # Parse JSON if body is not empty
-    except ValueError:
-        raise HTTPException(status_code=400, detail="Invalid JSON in request body.")
-    logging.info(payload)
-    print(payload)
-    # event = payload.get("event")
-    # subscription_code = payload["data"]["subscription_code"]
+    # Paystack sends a header 'x-paystack-signature' for webhook validation
+    paystack_signature = request.headers.get('x-paystack-signature')
 
-    # if event in ["subscription.disable", "subscription.expired"]:
-    #     # Handle subscription cancellation
-    #     await crud.update_user_subscription(subscription_code, "inactive", None)
-    #     return {"message": "Subscription marked as inactive"}
+    # Verify the signature
+    if not verify_paystack_signature(payload.decode("utf-8"), paystack_signature):
+        raise HTTPException(status_code=400, detail="Invalid signature")
 
-    # elif event in ["subscription.create", "subscription.enable"]:
-    #     # Handle subscription creation or reactivation
-    #     tier = payload["data"]["plan"]["name"]
-    #     await crud.update_user_subscription(subscription_code, "active", tier)
-    #     return {"message": "Subscription marked as active"}
+    # Parse the JSON payload
+    event = json.loads(payload)
 
-    return {"message": "Event not processed"}
+    # Check the event type (subscription, payment, etc.)
+    if event["event"] == "subscription.create":
+        # Handle subscription creation
+        print(f"New subscription created: {event['data']['subscription_code']}")
 
-# @app.post("/my/webhook/url")
-# async def webhook(request: Request):
-#     # Retrieve the request's body
-#     payload = await request.json()  # Similar to req.body in Express
-#     # Do something with the event (payload)
-#     return {"message": "Webhook received"}, 200  # Send HTTP 200 response
+    elif event["event"] == "charge.success":
+        # Handle successful payment
+        print(f"Payment successful: {event['data']['reference']}")
 
+    # Handle other event types as necessary
+    elif event["event"] == "subscription.disable":
+        # Handle subscription disabled event
+        print(f"Subscription disabled: {event['data']['subscription_code']}")
 
-@app.post("/paystack-webhook")
-async def paystack_webhook(payload:PaystackWebhookPayload):
-    logging.info(payload)
-    #if payload.event == "charge.success":
-    #    payment_data = payload.data
-        # Do something with payment data
-        # Example: Save payment data to database, send email to customer, update order status, etc.
-        #return {"message":"Payment successful"} # redirect to a payment succesful page
-    return {"message":"Payment failed"} # can also redirect users to a page to try again or contact support
+    return {"status": "success"}
