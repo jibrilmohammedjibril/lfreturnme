@@ -513,3 +513,29 @@ async def paystack_webhook(request: Request, background_tasks: BackgroundTasks):
     except Exception as e:
         logging.error(f"Error processing webhook: {str(e)}")
         raise HTTPException(status_code=500, detail="Internal Server Error")
+
+
+@app.post("/webhook/paystack2")
+async def paystack_webhook(request: Request):
+    payload = await request.json()
+    try:
+        body = await request.body()  # Read raw body
+        if not body:
+            raise HTTPException(status_code=400, detail="Empty body in the request.")
+        payload = await request.json()  # Parse JSON if body is not empty
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid JSON in request body.")
+    logging.info(payload)
+    print(payload)
+    # event = payload.get("event")
+    # subscription_code = payload["data"]["subscription_code"]
+    # if event in ["subscription.disable", "subscription.expired"]:
+    #     # Handle subscription cancellation
+    #     await crud.update_user_subscription(subscription_code, "inactive", None)
+    #     return {"message": "Subscription marked as inactive"}
+    # elif event in ["subscription.create", "subscription.enable"]:
+    #     # Handle subscription creation or reactivation
+    #     tier = payload["data"]["plan"]["name"]
+    #     await crud.update_user_subscription(subscription_code, "active", tier)
+    #     return {"message": "Subscription marked as active"}
+    return {"message": "Event not processed"}
