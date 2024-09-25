@@ -22,7 +22,6 @@ import hmac
 import hashlib
 import json
 
-
 app = FastAPI()
 app.add_middleware(
     CORSMiddleware,
@@ -489,109 +488,28 @@ async def get_user_dashboard(uuid: str):
     return user_data
 
 
-@app.get("/subscriptions/update")
-async def fetch_and_update_subscriptions(background_tasks: BackgroundTasks):
-    active_subscriptions = await crud.get_active_subscriptions()
-
-    # Fetch details and update each subscription
-    for sub in active_subscriptions:
-        subscription_code = sub['subscription_code']
-        tier = sub['plan']['name']  # Assuming 'plan' contains the subscription tier
-        status = sub['status']  # Assuming 'status' holds the subscription status
-
-        # Update the user's subscription status and tier
-        background_tasks.add_task(crud.update_user_subscription, subscription_code, status, tier)
-
-    return {"message": "Subscriptions update process started."}
-
-
-#Paystack Webhook to update subscription status
-@app.post("/webhook")
-async def paystack_webhook(request: Request):
-    payload = await request.json()
-    try:
-        body = await request.body()  # Read raw body
-        if not body:
-            raise HTTPException(status_code=400, detail="Empty body in the request.")
-
-        payload = await request.json()  # Parse JSON if body is not empty
-    except ValueError:
-        raise HTTPException(status_code=400, detail="Invalid JSON in request body.")
-    logging.info(payload)
-    print(payload)
-    # event = payload.get("event")
-    # subscription_code = payload["data"]["subscription_code"]
-
-    # if event in ["subscription.disable", "subscription.expired"]:
-    #     # Handle subscription cancellation
-    #     await crud.update_user_subscription(subscription_code, "inactive", None)
-    #     return {"message": "Subscription marked as inactive"}
-
-    # elif event in ["subscription.create", "subscription.enable"]:
-    #     # Handle subscription creation or reactivation
-    #     tier = payload["data"]["plan"]["name"]
-    #     await crud.update_user_subscription(subscription_code, "active", tier)
-    #     return {"message": "Subscription marked as active"}
-
-    return {"message": "Event not processed"}
-
-@app.post("/my/webhook/url")
-async def webhook(request: Request):
-    # Retrieve the request's body
-    payload = await request.json()  # Similar to req.body in Express
-    # Do something with the event (payload)
-    return {"message": "Webhook received"}, 200  # Send HTTP 200 response
-
-
-@app.post("/paystack-webhook")
-async def paystack_webhook(payload:PaystackWebhookPayload):
-    logging.info(payload)
-    #if payload.event == "charge.success":
-    #    payment_data = payload.data
-        # Do something with payment data
-        # Example: Save payment data to database, send email to customer, update order status, etc.
-        #return {"message":"Payment successful"} # redirect to a payment succesful page
-    return {"message":"Payment failed"} # can also redirect users to a page to try again or contact support
-
-PAYSTACK_SECRET_KEY = "sk_test_cea8e0d957a9739e4e1fc0908df29e9120eb456c"
-
-# Helper function to verify Paystack signature
-def verify_paystack_signature(request_body: str, received_signature: str) -> bool:
-    computed_signature = hmac.new(
-        PAYSTACK_SECRET_KEY.encode("utf-8"),
-        request_body.encode("utf-8"),
-        hashlib.sha512
-    ).hexdigest()
-
-    return hmac.compare_digest(computed_signature, received_signature)
-
 @app.post("/webhook/paystack")
-async def paystack_webhook(request: Request):
-    # Get the request body
-    payload = await request.body()
+async def paystack_webhook(request: Request, background_tasks: BackgroundTasks):
+    try:
+        # Get the request body
+        payload = await request.body()
 
-    # Paystack sends a header 'x-paystack-signature' for webhook validation
-    paystack_signature = request.headers.get('x-paystack-signature')
+        # Paystack sends a header 'x-paystack-signature' for webhook validation
+        paystack_signature = request.headers.get('x-paystack-signature')
 
-    # Verify the signature
-    if not verify_paystack_signature(payload.decode("utf-8"), paystack_signature):
-        raise HTTPException(status_code=400, detail="Invalid signature")
+        # Verify the signature
+        if not crud.verify_paystack_signature(payload.decode("utf-8"), paystack_signature):
+            raise HTTPException(status_code=400, detail="Invalid signature")
 
-    # Parse the JSON payload
-    event = json.loads(payload)
+        # Parse the JSON payload
+        event = json.loads(payload)
 
-    # Check the event type (subscription, payment, etc.)
-    if event["event"] == "subscription.create":
-        # Handle subscription creation
-        print(f"New subscription created: {event['data']['subscription_code']}")
+        # Acknowledge receipt immediately by returning 200 OK
+        background_tasks.add_task(crud.process_paystack_event, event.get('data', {}), background_tasks)
 
-    elif event["event"] == "charge.success":
-        # Handle successful payment
-        print(f"Payment successful: {event['data']['reference']}")
+        # Return 200 OK immediately
+        return {"status": "success"}
 
-    # Handle other event types as necessary
-    elif event["event"] == "subscription.disable":
-        # Handle subscription disabled event
-        print(f"Subscription disabled: {event['data']['subscription_code']}")
-
-    return {"status":"success"}
+    except Exception as e:
+        logging.error(f"Error processing webhook: {str(e)}")
+        raise HTTPException(status_code=500, detail="Internal Server Error")

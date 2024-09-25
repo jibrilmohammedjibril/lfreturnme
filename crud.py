@@ -1,13 +1,14 @@
 import base64
 import json
 import os
+import re
 import smtplib
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 import random
 import httpx
 import motor.motor_asyncio
-from fastapi import UploadFile, HTTPException
+from fastapi import UploadFile, HTTPException, BackgroundTasks
 from motor.motor_asyncio import AsyncIOMotorClient
 import schemas
 import uuid
@@ -23,6 +24,8 @@ from pymongo.collection import Collection
 from datetime import datetime, timedelta
 from pymongo import ReturnDocument
 from dotenv import load_dotenv
+import hmac
+import hashlib
 
 load_dotenv()
 
@@ -423,3 +426,144 @@ async def get_active_subscriptions():
         data = response.json()
         active_subscriptions = [sub for sub in data['data'] if sub['status'] == 'active']
         return active_subscriptions
+
+
+def send_email_webhook(cleaned_email: str):
+    try:
+        # Example sending email logic using smtplib
+        sender_email = "your_sender_email@example.com"  # Replace with your sender email
+        receiver_email = cleaned_email
+        subject = "Subscription Update"
+        body = f"Hello, your subscription has been updated successfully."
+
+        # Setup the email
+        msg = MIMEText(body)
+        msg["Subject"] = subject
+        msg["From"] = sender_email
+        msg["To"] = receiver_email
+
+        # Send the email
+        with smtplib.SMTP("smtp.example.com", 587) as server:  # Replace with your SMTP server and port
+            server.starttls()
+            server.login(sender_email, "your_password")  # Replace with your email password
+            server.sendmail(sender_email, receiver_email, msg.as_string())
+        logging.info(f"Email sent to {cleaned_email}")
+    except Exception as e:
+        logging.error(f"Failed to send email: {str(e)}")
+
+
+def clean_email(email: str) -> str:
+    # Split email into prefix and domain
+    prefix, domain = email.split('@')
+
+    # Remove numbers from the prefix
+    cleaned_prefix = re.sub(r'\d+', '', prefix)
+
+    # Return the cleaned email with domain
+    return f"{cleaned_prefix}@{domain}"
+
+
+def process_paystack_event(data: dict, background_tasks: BackgroundTasks):
+    try:
+        metadata = data.get('metadata', {})
+        custom_fields = metadata.get('custom_fields', [])
+
+        # Extract tag_id from custom_fields
+        tag_id = next((field.get('value') for field in custom_fields if field.get('variable_name') == 'tag_id'), None)
+
+        # Extract email from customer data
+        customer = data.get('customer', {})
+        email = customer.get('email')
+
+        if tag_id:
+            # Find the item in the items collection using tag_id
+            item = items_collection.find_one({'tag1': tag_id})
+
+            if item:
+                # Prepare the fields to update
+                update_fields = {}
+
+                # Determine subscription_status and tier based on payment data
+                if 'plan' in data and data['plan']:
+                    # It's a subscription payment
+                    update_fields['subscription_status'] = 'active'
+                    update_fields['tier'] = data['plan'].get('name', item.get('tier', ''))
+                else:
+                    # It's a one-time payment
+                    update_fields['subscription_status'] = 'one-time'
+                    amount = data.get('amount', 0) / 100  # Paystack amounts are in kobo
+                    # Determine tier based on amount
+                    if amount == 250:
+                        update_fields['tier'] = 'Basic'
+                    elif amount == 500:
+                        update_fields['tier'] = 'Premium'
+                    else:
+                        update_fields['tier'] = 'Standard'
+
+                # Update the item document in items collection
+                items_collection.update_one({'_id': item['_id']}, {'$set': update_fields})
+
+                # Update the email address in both items collection and user's items field
+                if email:
+                    # Update the email in the items collection
+                    items_collection.update_one(
+                        {'_id': item['_id']},
+                        {'$set': {'email_address': email}}
+                    )
+
+                    # Get the uuid from the item
+                    uuid = item.get('uuid')
+                    if uuid:
+                        # Find the user in the users collection using uuid
+                        user = users_collection.find_one({'uuid': uuid})
+
+                        if user:
+                            user_items = user.get('items', {})
+
+                            if tag_id in user_items:
+                                user_item = user_items[tag_id]
+                                # Update the email in the user's items field
+                                user_item['email_address'] = email
+
+                                # Update the user's items field in the database
+                                users_collection.update_one(
+                                    {'_id': user['_id']},
+                                    {'$set': {f'items.{tag_id}': user_item}}
+                                )
+
+                                logging.info(
+                                    f"Updated email address in both items and user's items for tag {tag_id}: {email}")
+                            else:
+                                logging.warning(f"Tag {tag_id} not found in user's items.")
+                        else:
+                            logging.warning(f"User with uuid {uuid} not found.")
+
+                        # Clean the email and send it in the background
+                        cleaned_email = clean_email(email)
+                        background_tasks.add_task(send_email, cleaned_email)
+
+                    else:
+                        logging.warning("UUID not found in item document.")
+                else:
+                    logging.warning("Email not found in customer data.")
+            else:
+                logging.warning(f"Item with tagid {tag_id} not found in items collection.")
+        else:
+            logging.warning("tag_id not found in custom_fields.")
+    except Exception as e:
+        logging.error(f"Error processing Paystack event: {str(e)}")
+
+
+def verify_paystack_signature(payload: str, paystack_signature: str) -> bool:
+    # Your Paystack secret key
+    PAYSTACK_SECRET_KEY = os.getenv("PAYSTACK_SECRET_KEY")
+
+    # Generate a hash with the secret key and payload
+    generated_signature = hmac.new(
+        PAYSTACK_SECRET_KEY.encode('utf-8'),
+        msg=payload.encode('utf-8'),
+        digestmod=hashlib.sha512
+    ).hexdigest()
+
+    # Compare the generated signature with the one from the webhook
+    return hmac.compare_digest(generated_signature, paystack_signature)
