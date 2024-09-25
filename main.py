@@ -515,12 +515,8 @@ async def paystack_webhook(request: Request, background_tasks: BackgroundTasks):
         raise HTTPException(status_code=500, detail="Internal Server Error")
 
 
-import logging
-from fastapi import FastAPI, Request, HTTPException, status
-from typing import Optional
-import crud  # assuming this is where your CRUD operations are defined
+  # assuming this is where your CRUD operations are defined
 
-app = FastAPI()
 
 
 @app.post("/webhook/paystack2")
