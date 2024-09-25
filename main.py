@@ -515,27 +515,52 @@ async def paystack_webhook(request: Request, background_tasks: BackgroundTasks):
         raise HTTPException(status_code=500, detail="Internal Server Error")
 
 
+import logging
+from fastapi import FastAPI, Request, HTTPException, status
+from typing import Optional
+import crud  # assuming this is where your CRUD operations are defined
+
+app = FastAPI()
+
+
 @app.post("/webhook/paystack2")
 async def paystack_webhook(request: Request):
-    payload = await request.json()
     try:
-        body = await request.body()  # Read raw body
+        # Read raw body
+        body = await request.body()
         if not body:
             raise HTTPException(status_code=400, detail="Empty body in the request.")
-        payload = await request.json()  # Parse JSON if body is not empty
+
+        # Parse the JSON payload
+        payload = await request.json()
     except ValueError:
         raise HTTPException(status_code=400, detail="Invalid JSON in request body.")
-    logging.info(payload)
-    print(payload)
+
+    logging.info(f"Webhook payload: {payload}")
+    print(f"Webhook payload: {payload}")
+
+    # Extract event type
     # event = payload.get("event")
-    # subscription_code = payload["data"]["subscription_code"]
+    # if not event:
+    #     raise HTTPException(status_code=400, detail="No event type specified in payload.")
+    #
+    # # Process subscription-related events
     # if event in ["subscription.disable", "subscription.expired"]:
-    #     # Handle subscription cancellation
-    #     await crud.update_user_subscription(subscription_code, "inactive", None)
-    #     return {"message": "Subscription marked as inactive"}
+    #     subscription_code = payload["data"].get("subscription_code")
+    #     if subscription_code:
+    #         await crud.update_user_subscription(subscription_code, "inactive", None)
+    #         return {"message": "Subscription marked as inactive"}
+    #     else:
+    #         raise HTTPException(status_code=400, detail="No subscription code provided.")
+    #
     # elif event in ["subscription.create", "subscription.enable"]:
-    #     # Handle subscription creation or reactivation
-    #     tier = payload["data"]["plan"]["name"]
-    #     await crud.update_user_subscription(subscription_code, "active", tier)
-    #     return {"message": "Subscription marked as active"}
+    #     subscription_code = payload["data"].get("subscription_code")
+    #     tier = payload["data"]["plan"].get("name") if payload["data"].get("plan") else None
+    #     if subscription_code and tier:
+    #         await crud.update_user_subscription(subscription_code, "active", tier)
+    #         return {"message": "Subscription marked as active"}
+    #     else:
+    #         raise HTTPException(status_code=400, detail="Missing subscription code or tier.")
+
+    # Default response for unprocessed events
     return {"message": "Event not processed"}
