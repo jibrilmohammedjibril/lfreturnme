@@ -550,7 +550,7 @@ def process_paystack_event(data: dict, background_tasks: BackgroundTasks):
                 if 'plan' in data and data['plan']:
                     update_fields['subscription_status'] = 'active'
                     update_fields['tier'] = data['plan'].get('name', item.get('tier', ''))
-                    update_fields["subscription_code"] = get_subscription_code(email)
+                    update_fields["subscription_code"] = await get_subscription_code(email)
                 else:
                     update_fields['subscription_status'] = 'one-time'
                     amount = data.get('amount', 0) / 100
