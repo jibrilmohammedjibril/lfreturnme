@@ -463,6 +463,24 @@ def clean_email(email: str) -> str:
     # Return the cleaned email with domain
     return f"{cleaned_prefix}@{domain}"
 
+def verify_paystack_signature(payload: str, paystack_signature: str) -> bool:
+    # Your Paystack secret key
+    PAYSTACK_SECRET_KEY = os.getenv("PAYSTACK_SECRET_KEY")
+
+    if not PAYSTACK_SECRET_KEY:
+        logging.error("PAYSTACK_SECRET_KEY is not set.")
+        return False
+
+    # Generate a hash with the secret key and payload
+    generated_signature = hmac.new(
+        PAYSTACK_SECRET_KEY.encode('utf-8'),
+        msg=payload.encode('utf-8'),
+        digestmod=hashlib.sha512
+    ).hexdigest()
+
+    # Compare the generated signature with the one from the webhook
+    return hmac.compare_digest(generated_signature, paystack_signature)
+
 
 def process_paystack_event(data: dict, background_tasks: BackgroundTasks):
     try:
@@ -507,6 +525,7 @@ def process_paystack_event(data: dict, background_tasks: BackgroundTasks):
                 if email:
                     await items_collection.update_one({'_id': item['_id']}, {'$set': {'email_address': email}})
                     uuid = item.get('uuid')
+                    logging.info(f"uuid found: {uuid}")
                     if uuid:
                         user = await users_collection.find_one({'uuid': uuid})
                         if user:
@@ -534,20 +553,4 @@ def process_paystack_event(data: dict, background_tasks: BackgroundTasks):
 
 # Dummy implementations for the sake of example, you should replace these with actual functionality
 
-def verify_paystack_signature(payload: str, paystack_signature: str) -> bool:
-    # Your Paystack secret key
-    PAYSTACK_SECRET_KEY = os.getenv("PAYSTACK_SECRET_KEY")
 
-    if not PAYSTACK_SECRET_KEY:
-        logging.error("PAYSTACK_SECRET_KEY is not set.")
-        return False
-
-    # Generate a hash with the secret key and payload
-    generated_signature = hmac.new(
-        PAYSTACK_SECRET_KEY.encode('utf-8'),
-        msg=payload.encode('utf-8'),
-        digestmod=hashlib.sha512
-    ).hexdigest()
-
-    # Compare the generated signature with the one from the webhook
-    return hmac.compare_digest(generated_signature, paystack_signature)
