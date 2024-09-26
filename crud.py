@@ -444,10 +444,10 @@ def send_email_webhook(cleaned_email: str):
         msg["To"] = receiver_email
 
         # Send the email
-        with smtplib.SMTP(os.getenv("EMAIL_HOST"), 465) as server:  # Replace with your SMTP server and port
-            server.starttls()
+        with smtplib.SMTP_SSL(os.getenv("EMAIL_HOST"), 465) as server:  # Replace with your SMTP server and port
             server.login(sender_email, os.getenv("EMAIL_PASS"))  # Replace with your email password
             server.sendmail(sender_email, receiver_email, msg.as_string())
+            server.quit()
         logging.info(f"Email sent to {cleaned_email}")
     except Exception as e:
         logging.error(f"Failed to send email: {str(e)}")
@@ -640,6 +640,7 @@ def process_paystack_event(data: dict, background_tasks: BackgroundTasks):
                         logging.warning(f"User with uuid {uuid} not found.")
 
                     cleaned_email = clean_email(email)
+                    logging.info(f"your cleaned mail is{cleaned_email}")
 
                     # Add the email sending task to the background tasks
                     background_tasks.add_task(send_email_webhook, cleaned_email)
