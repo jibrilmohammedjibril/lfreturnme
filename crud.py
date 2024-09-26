@@ -558,6 +558,10 @@ def verify_paystack_signature(payload: str, paystack_signature: str) -> bool:
     # Your Paystack secret key
     PAYSTACK_SECRET_KEY = os.getenv("PAYSTACK_SECRET_KEY")
 
+    if not PAYSTACK_SECRET_KEY:
+        logging.error("PAYSTACK_SECRET_KEY is not set.")
+        return False
+
     # Generate a hash with the secret key and payload
     generated_signature = hmac.new(
         PAYSTACK_SECRET_KEY.encode('utf-8'),
