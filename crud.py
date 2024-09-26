@@ -463,6 +463,7 @@ def clean_email(email: str) -> str:
     # Return the cleaned email with domain
     return f"{cleaned_prefix}@{domain}"
 
+
 def verify_paystack_signature(payload: str, paystack_signature: str) -> bool:
     # Your Paystack secret key
     PAYSTACK_SECRET_KEY = os.getenv("PAYSTACK_SECRET_KEY")
@@ -482,6 +483,79 @@ def verify_paystack_signature(payload: str, paystack_signature: str) -> bool:
     return hmac.compare_digest(generated_signature, paystack_signature)
 
 
+# def process_paystack_event(data: dict, background_tasks: BackgroundTasks):
+#     try:
+#         # Extract metadata and custom_fields
+#         metadata = data.get('metadata', {})
+#         custom_fields = metadata.get('custom_fields', [])
+#
+#         # Log the entire custom_fields for debugging
+#         logging.debug(f"Full custom_fields: {custom_fields}")
+#
+#         # Extract the tag_id from custom_fields
+#         tag_id = next((field.get('value') for field in custom_fields if field.get('variable_name') == 'tag_id'), None)
+#
+#         if not tag_id:
+#             logging.warning(f"tag_id not found in custom_fields: {custom_fields}")
+#             return
+#
+#         logging.info(f"tag_id found: {tag_id}")
+#
+#         # Extract email from customer data
+#         customer = data.get('customer', {})
+#         email = customer.get('email')
+#
+#         # Ensure async database calls are handled correctly
+#         async def async_process():
+#             item = await items_collection.find_one({'tag_id': tag_id})
+#
+#             if item:
+#                 update_fields = {}
+#
+#                 # Determine subscription status and tier
+#                 if 'plan' in data and data['plan']:
+#                     update_fields['subscription_status'] = 'active'
+#                     update_fields['tier'] = data['plan'].get('name', item.get('tier', ''))
+#                 else:
+#                     update_fields['subscription_status'] = 'one-time'
+#                     amount = data.get('amount', 0) / 100
+#                     update_fields['tier'] = 'Basic' if amount == 250 else 'Premium' if amount == 500 else 'Standard'
+#
+#                 await items_collection.update_one({'_id': item['_id']}, {'$set': update_fields})
+#
+#                 if email:
+#                     await items_collection.update_one({'_id': item['_id']}, {'$set': {'email_address': email}})
+#                     uuid = item.get('uuid')
+#                     logging.info(f"uuid found: {uuid}")
+#                     if uuid:
+#                         user = await users_collection.find_one({'uuid': uuid})
+#                         if user:
+#                             user_items = user.get('items', {})
+#                             if tag_id in user_items:
+#                                 user_item = user_items[tag_id]
+#                                 user_item['email_address'] = email
+#                                 await users_collection.update_one({'_id': user['_id']}, {'$set': {f'items.{tag_id}': user_item}})
+#
+#                                 logging.info(f"Updated email for tag {tag_id}: {email}")
+#                             else:
+#                                 logging.warning(f"Tag {tag_id} not found in user's items.")
+#                         else:
+#                             logging.warning(f"User with uuid {uuid} not found.")
+#
+#                         cleaned_email = clean_email(email)
+#                         background_tasks.add_task(send_email_webhook, cleaned_email)
+#
+#         # Run async function in the background task
+#         anyio.from_thread.run(async_process)
+#
+#     except Exception as e:
+#         logging.error(f"Error processing Paystack event: {str(e)}")
+#
+#
+# # Dummy implementations for the sake of example, you should replace these with actual functionality
+#
+
+
 def process_paystack_event(data: dict, background_tasks: BackgroundTasks):
     try:
         # Extract metadata and custom_fields
@@ -498,14 +572,18 @@ def process_paystack_event(data: dict, background_tasks: BackgroundTasks):
             logging.warning(f"tag_id not found in custom_fields: {custom_fields}")
             return
 
+        # Ensure tag_id is a string
+        tag_id = str(tag_id)
         logging.info(f"tag_id found: {tag_id}")
 
         # Extract email from customer data
-        customer = data.get('customer', {})
-        email = customer.get('email')
 
+        customer = data.get('customer', {})
+
+        #
         # Ensure async database calls are handled correctly
         async def async_process():
+            # Find the item in the items collection
             item = await items_collection.find_one({'tag_id': tag_id})
 
             if item:
@@ -520,29 +598,51 @@ def process_paystack_event(data: dict, background_tasks: BackgroundTasks):
                     amount = data.get('amount', 0) / 100
                     update_fields['tier'] = 'Basic' if amount == 250 else 'Premium' if amount == 500 else 'Standard'
 
+                # Update the item in the items collection
                 await items_collection.update_one({'_id': item['_id']}, {'$set': update_fields})
 
+                # Update the email address in the items collection
+                email = customer.get('email')
                 if email:
                     await items_collection.update_one({'_id': item['_id']}, {'$set': {'email_address': email}})
-                    uuid = item.get('uuid')
-                    logging.info(f"uuid found: {uuid}")
-                    if uuid:
-                        user = await users_collection.find_one({'uuid': uuid})
-                        if user:
-                            user_items = user.get('items', {})
-                            if tag_id in user_items:
-                                user_item = user_items[tag_id]
-                                user_item['email_address'] = email
-                                await users_collection.update_one({'_id': user['_id']}, {'$set': {f'items.{tag_id}': user_item}})
+                else:
+                    email = item.get('email_address')
 
-                                logging.info(f"Updated email for tag {tag_id}: {email}")
-                            else:
-                                logging.warning(f"Tag {tag_id} not found in user's items.")
+                # Fetch the updated item
+                updated_item = await items_collection.find_one({'_id': item['_id']})
+
+                # Remove the '_id' field before embedding it in the user's items
+                if '_id' in updated_item:
+                    del updated_item['_id']
+
+                uuid = item.get('uuid')
+                logging.info(f"uuid found: {uuid}")
+                if uuid:
+                    # Find the user in the users collection
+                    user = await users_collection.find_one({'uuid': uuid})
+                    if user:
+                        user_items = user.get('items', {})
+                        # Ensure keys are strings
+                        user_items = {str(k): v for k, v in user_items.items()}
+                        logging.info(f"user_items keys: {list(user_items.keys())}")
+
+                        if tag_id in user_items:
+                            # Update the entire item under the user's items
+                            result = await users_collection.update_one(
+                                {'_id': user['_id']},
+                                {'$set': {f'items.{tag_id}': updated_item}}
+                            )
+                            logging.info(f"Updated user item for tag {tag_id} to match items collection.")
+                            logging.debug(f"Update result: {result.raw_result}")
                         else:
-                            logging.warning(f"User with uuid {uuid} not found.")
+                            logging.warning(f"Tag {tag_id} not found in user's items.")
+                    else:
+                        logging.warning(f"User with uuid {uuid} not found.")
 
-                        cleaned_email = clean_email(email)
-                        background_tasks.add_task(send_email, cleaned_email)
+                    cleaned_email = clean_email(email)
+
+                    # Add the email sending task to the background tasks
+                    background_tasks.add_task(send_email, cleaned_email)
 
         # Run async function in the background task
         anyio.from_thread.run(async_process)
@@ -550,7 +650,4 @@ def process_paystack_event(data: dict, background_tasks: BackgroundTasks):
     except Exception as e:
         logging.error(f"Error processing Paystack event: {str(e)}")
 
-
-# Dummy implementations for the sake of example, you should replace these with actual functionality
-
-
+# Utility functions
