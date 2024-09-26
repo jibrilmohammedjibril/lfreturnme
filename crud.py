@@ -488,7 +488,7 @@ def process_paystack_event(data: dict, background_tasks: BackgroundTasks):
 
         # Ensure async database calls are handled correctly
         async def async_process():
-            item = await items_collection.find_one({'tag1': tag_id})
+            item = await items_collection.find_one({'tag_id': tag_id})
 
             if item:
                 update_fields = {}
