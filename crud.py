@@ -457,12 +457,11 @@ def clean_email(email: str) -> str:
     # Split email into prefix and domain
     prefix, domain = email.split('@')
 
-    # Remove numbers from the prefix
-    cleaned_prefix = re.sub(r'\d+', '', prefix)
+    # Remove everything after '+' including the '+' itself
+    cleaned_prefix = re.sub(r'\+\d+', '', prefix)
 
     # Return the cleaned email with domain
     return f"{cleaned_prefix}@{domain}"
-
 
 def verify_paystack_signature(payload: str, paystack_signature: str) -> bool:
     # Your Paystack secret key
