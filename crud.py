@@ -466,15 +466,21 @@ def clean_email(email: str) -> str:
 
 def process_paystack_event(data: dict, background_tasks: BackgroundTasks):
     try:
+        # Extract metadata and custom_fields
         metadata = data.get('metadata', {})
         custom_fields = metadata.get('custom_fields', [])
 
-        # Extract tag_id from custom_fields
+        # Log the entire custom_fields for debugging
+        logging.debug(f"Full custom_fields: {custom_fields}")
+
+        # Extract the tag_id from custom_fields
         tag_id = next((field.get('value') for field in custom_fields if field.get('variable_name') == 'tag_id'), None)
 
         if not tag_id:
-            logging.warning("tag_id not found in custom_fields.")
+            logging.warning(f"tag_id not found in custom_fields: {custom_fields}")
             return
+
+        logging.info(f"tag_id found: {tag_id}")
 
         # Extract email from customer data
         customer = data.get('customer', {})
@@ -486,6 +492,8 @@ def process_paystack_event(data: dict, background_tasks: BackgroundTasks):
 
             if item:
                 update_fields = {}
+
+                # Determine subscription status and tier
                 if 'plan' in data and data['plan']:
                     update_fields['subscription_status'] = 'active'
                     update_fields['tier'] = data['plan'].get('name', item.get('tier', ''))
@@ -506,8 +514,7 @@ def process_paystack_event(data: dict, background_tasks: BackgroundTasks):
                             if tag_id in user_items:
                                 user_item = user_items[tag_id]
                                 user_item['email_address'] = email
-                                await users_collection.update_one({'_id': user['_id']},
-                                                                  {'$set': {f'items.{tag_id}': user_item}})
+                                await users_collection.update_one({'_id': user['_id']}, {'$set': {f'items.{tag_id}': user_item}})
 
                                 logging.info(f"Updated email for tag {tag_id}: {email}")
                             else:
@@ -524,6 +531,8 @@ def process_paystack_event(data: dict, background_tasks: BackgroundTasks):
     except Exception as e:
         logging.error(f"Error processing Paystack event: {str(e)}")
 
+
+# Dummy implementations for the sake of example, you should replace these with actual functionality
 
 def verify_paystack_signature(payload: str, paystack_signature: str) -> bool:
     # Your Paystack secret key
