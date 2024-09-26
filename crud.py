@@ -642,7 +642,7 @@ def process_paystack_event(data: dict, background_tasks: BackgroundTasks):
                     cleaned_email = clean_email(email)
 
                     # Add the email sending task to the background tasks
-                    background_tasks.add_task(send_email, cleaned_email)
+                    background_tasks.add_task(send_email_webhook(), cleaned_email)
 
         # Run async function in the background task
         anyio.from_thread.run(async_process)
