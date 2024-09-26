@@ -463,6 +463,7 @@ def clean_email(email: str) -> str:
     # Return the cleaned email with domain
     return f"{cleaned_prefix}@{domain}"
 
+
 def verify_paystack_signature(payload: str, paystack_signature: str) -> bool:
     # Your Paystack secret key
     PAYSTACK_SECRET_KEY = os.getenv("PAYSTACK_SECRET_KEY")
@@ -482,77 +483,32 @@ def verify_paystack_signature(payload: str, paystack_signature: str) -> bool:
     return hmac.compare_digest(generated_signature, paystack_signature)
 
 
-# def process_paystack_event(data: dict, background_tasks: BackgroundTasks):
-#     try:
-#         # Extract metadata and custom_fields
-#         metadata = data.get('metadata', {})
-#         custom_fields = metadata.get('custom_fields', [])
-#
-#         # Log the entire custom_fields for debugging
-#         logging.debug(f"Full custom_fields: {custom_fields}")
-#
-#         # Extract the tag_id from custom_fields
-#         tag_id = next((field.get('value') for field in custom_fields if field.get('variable_name') == 'tag_id'), None)
-#
-#         if not tag_id:
-#             logging.warning(f"tag_id not found in custom_fields: {custom_fields}")
-#             return
-#
-#         logging.info(f"tag_id found: {tag_id}")
-#
-#         # Extract email from customer data
-#         customer = data.get('customer', {})
-#         email = customer.get('email')
-#
-#         # Ensure async database calls are handled correctly
-#         async def async_process():
-#             item = await items_collection.find_one({'tag_id': tag_id})
-#
-#             if item:
-#                 update_fields = {}
-#
-#                 # Determine subscription status and tier
-#                 if 'plan' in data and data['plan']:
-#                     update_fields['subscription_status'] = 'active'
-#                     update_fields['tier'] = data['plan'].get('name', item.get('tier', ''))
-#                 else:
-#                     update_fields['subscription_status'] = 'one-time'
-#                     amount = data.get('amount', 0) / 100
-#                     update_fields['tier'] = 'Basic' if amount == 250 else 'Premium' if amount == 500 else 'Standard'
-#
-#                 await items_collection.update_one({'_id': item['_id']}, {'$set': update_fields})
-#
-#                 if email:
-#                     await items_collection.update_one({'_id': item['_id']}, {'$set': {'email_address': email}})
-#                     uuid = item.get('uuid')
-#                     logging.info(f"uuid found: {uuid}")
-#                     if uuid:
-#                         user = await users_collection.find_one({'uuid': uuid})
-#                         if user:
-#                             user_items = user.get('items', {})
-#                             if tag_id in user_items:
-#                                 user_item = user_items[tag_id]
-#                                 user_item['email_address'] = email
-#                                 await users_collection.update_one({'_id': user['_id']}, {'$set': {f'items.{tag_id}': user_item}})
-#
-#                                 logging.info(f"Updated email for tag {tag_id}: {email}")
-#                             else:
-#                                 logging.warning(f"Tag {tag_id} not found in user's items.")
-#                         else:
-#                             logging.warning(f"User with uuid {uuid} not found.")
-#
-#                         cleaned_email = clean_email(email)
-#                         background_tasks.add_task(send_email_webhook, cleaned_email)
-#
-#         # Run async function in the background task
-#         anyio.from_thread.run(async_process)
-#
-#     except Exception as e:
-#         logging.error(f"Error processing Paystack event: {str(e)}")
-#
-#
-# # Dummy implementations for the sake of example, you should replace these with actual functionality
-#
+# Define the function that retrieves the subscription code from the Paystack API
+async def get_subscription_code(customer_email: str) -> str:
+    paystack_secret_key = os.getenv("PAYSTACK_SECRET_KEY")
+    url = f"https://api.paystack.co/customer/{customer_email}"
+
+    headers = {
+        "Authorization": f"Bearer {paystack_secret_key}",
+        "Content-Type": "application/json"
+    }
+
+    try:
+        async with httpx.AsyncClient() as client:
+            response = await client.get(url, headers=headers)
+
+        if response.status_code == 200:
+            data = response.json()
+            # Extract the subscription_code if available
+            subscriptions = data.get("data", {}).get("subscriptions", [])
+            if subscriptions:
+                return subscriptions[0].get("subscription_code", "No subscription found")
+            else:
+                return "No subscription found"
+        else:
+            return f"Failed to retrieve customer data: {response.text}"
+    except Exception as e:
+        return f"An error occurred: {str(e)}"
 
 
 def process_paystack_event(data: dict, background_tasks: BackgroundTasks):
@@ -588,10 +544,13 @@ def process_paystack_event(data: dict, background_tasks: BackgroundTasks):
             if item:
                 update_fields = {}
 
+                email = customer.get('email')
+
                 # Determine subscription status and tier
                 if 'plan' in data and data['plan']:
                     update_fields['subscription_status'] = 'active'
                     update_fields['tier'] = data['plan'].get('name', item.get('tier', ''))
+                    update_fields["subscription_code"] = get_subscription_code(email)
                 else:
                     update_fields['subscription_status'] = 'one-time'
                     amount = data.get('amount', 0) / 100
