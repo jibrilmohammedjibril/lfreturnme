@@ -432,7 +432,7 @@ async def get_active_subscriptions():
 def send_email_webhook(cleaned_email: str):
     try:
         # Example sending email logic using smtplib
-        sender_email = "your_sender_email@example.com"  # Replace with your sender email
+        sender_email = os.getenv("EMAIL_USER")  # Replace with your sender email
         receiver_email = cleaned_email
         subject = "Subscription Update"
         body = f"Hello, your subscription has been updated successfully."
@@ -444,9 +444,9 @@ def send_email_webhook(cleaned_email: str):
         msg["To"] = receiver_email
 
         # Send the email
-        with smtplib.SMTP("smtp.example.com", 587) as server:  # Replace with your SMTP server and port
+        with smtplib.SMTP(os.getenv("EMAIL_HOST"), 465) as server:  # Replace with your SMTP server and port
             server.starttls()
-            server.login(sender_email, "your_password")  # Replace with your email password
+            server.login(sender_email, os.getenv("EMAIL_PASS"))  # Replace with your email password
             server.sendmail(sender_email, receiver_email, msg.as_string())
         logging.info(f"Email sent to {cleaned_email}")
     except Exception as e:
