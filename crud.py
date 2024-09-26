@@ -26,6 +26,7 @@ from pymongo import ReturnDocument
 from dotenv import load_dotenv
 import hmac
 import hashlib
+import anyio
 
 load_dotenv()
 
@@ -471,85 +472,55 @@ def process_paystack_event(data: dict, background_tasks: BackgroundTasks):
         # Extract tag_id from custom_fields
         tag_id = next((field.get('value') for field in custom_fields if field.get('variable_name') == 'tag_id'), None)
 
+        if not tag_id:
+            logging.warning("tag_id not found in custom_fields.")
+            return
+
         # Extract email from customer data
         customer = data.get('customer', {})
         email = customer.get('email')
 
-        if tag_id:
-            # Find the item in the items collection using tag_id
-            item = items_collection.find_one({'tag1': tag_id})
+        # Ensure async database calls are handled correctly
+        async def async_process():
+            item = await items_collection.find_one({'tag1': tag_id})
 
             if item:
-                # Prepare the fields to update
                 update_fields = {}
-
-                # Determine subscription_status and tier based on payment data
                 if 'plan' in data and data['plan']:
-                    # It's a subscription payment
                     update_fields['subscription_status'] = 'active'
                     update_fields['tier'] = data['plan'].get('name', item.get('tier', ''))
                 else:
-                    # It's a one-time payment
                     update_fields['subscription_status'] = 'one-time'
-                    amount = data.get('amount', 0) / 100  # Paystack amounts are in kobo
-                    # Determine tier based on amount
-                    if amount == 250:
-                        update_fields['tier'] = 'Basic'
-                    elif amount == 500:
-                        update_fields['tier'] = 'Premium'
-                    else:
-                        update_fields['tier'] = 'Standard'
+                    amount = data.get('amount', 0) / 100
+                    update_fields['tier'] = 'Basic' if amount == 250 else 'Premium' if amount == 500 else 'Standard'
 
-                # Update the item document in items collection
-                items_collection.update_one({'_id': item['_id']}, {'$set': update_fields})
+                await items_collection.update_one({'_id': item['_id']}, {'$set': update_fields})
 
-                # Update the email address in both items collection and user's items field
                 if email:
-                    # Update the email in the items collection
-                    items_collection.update_one(
-                        {'_id': item['_id']},
-                        {'$set': {'email_address': email}}
-                    )
-
-                    # Get the uuid from the item
+                    await items_collection.update_one({'_id': item['_id']}, {'$set': {'email_address': email}})
                     uuid = item.get('uuid')
                     if uuid:
-                        # Find the user in the users collection using uuid
-                        user = users_collection.find_one({'uuid': uuid})
-
+                        user = await users_collection.find_one({'uuid': uuid})
                         if user:
                             user_items = user.get('items', {})
-
                             if tag_id in user_items:
                                 user_item = user_items[tag_id]
-                                # Update the email in the user's items field
                                 user_item['email_address'] = email
+                                await users_collection.update_one({'_id': user['_id']},
+                                                                  {'$set': {f'items.{tag_id}': user_item}})
 
-                                # Update the user's items field in the database
-                                users_collection.update_one(
-                                    {'_id': user['_id']},
-                                    {'$set': {f'items.{tag_id}': user_item}}
-                                )
-
-                                logging.info(
-                                    f"Updated email address in both items and user's items for tag {tag_id}: {email}")
+                                logging.info(f"Updated email for tag {tag_id}: {email}")
                             else:
                                 logging.warning(f"Tag {tag_id} not found in user's items.")
                         else:
                             logging.warning(f"User with uuid {uuid} not found.")
 
-                        # Clean the email and send it in the background
                         cleaned_email = clean_email(email)
                         background_tasks.add_task(send_email, cleaned_email)
 
-                    else:
-                        logging.warning("UUID not found in item document.")
-                else:
-                    logging.warning("Email not found in customer data.")
-            else:
-                logging.warning(f"Item with tagid {tag_id} not found in items collection.")
-        else:
-            logging.warning("tag_id not found in custom_fields.")
+        # Run async function in the background task
+        anyio.from_thread.run(async_process)
+
     except Exception as e:
         logging.error(f"Error processing Paystack event: {str(e)}")
 
