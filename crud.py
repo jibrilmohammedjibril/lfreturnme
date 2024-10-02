@@ -41,6 +41,7 @@ items_collection = db["items"]
 reset_tokens_collection = db["reset_tokens"]
 newsletters_collection = db["newsletters"]
 otp_collection = db["otp_collection"]
+access_collection = db['access']
 
 firebase_key_base64 = os.getenv("FIREBASE_KEY_BASE64")
 if not firebase_key_base64:
@@ -78,12 +79,12 @@ async def create_user(user: schemas.Signup) -> schemas.ResponseSignup:
                 "email_address": user.email_address,
                 "date_of_birth": user.date_of_birth.isoformat(),
                 "address": user.address,
-                "id_no": user.id_no,
+                #"id_no": user.id_no,
                 "profile_picture": user.profile_picture,
                 "phone_number": user.phone_number,
                 "gender": user.gender,
-                "valid_id_type": user.valid_id_type,
-                "id_card_image": user.id_card_image,
+                #"valid_id_type": user.valid_id_type,
+                #"id_card_image": user.id_card_image,
                 "password": hashed_password.decode('utf-8'),
                 "is_verified": user.is_verified
 
@@ -105,9 +106,31 @@ async def authenticate_user(email_address: str, password: str) -> schemas.Respon
         if not user:
             logger.warning("User does not exist: %s", email_address)
             raise HTTPException(status_code=404, detail="User does not exist")
+
         if bcrypt.checkpw(password.encode('utf-8'), user['password'].encode('utf-8')):
             logger.info("User authenticated successfully: %s", email_address)
-            return schemas.ResponseSignup(**user)
+
+            # Generate access token using save_access_token function
+            access_token = await save_access_code(user.get("uuid"))  # Assuming this function generates a token
+
+            # Update user with access_token and return updated schema
+            return schemas.ResponseSignup(
+                uuid=user.get("uuid"),
+                full_name=user.get("full_name"),
+                email_address=user.get("email_address"),
+                date_of_birth=user.get("date_of_birth"),
+                address=user.get("address"),
+                id_no=user.get("id_no"),
+                profile_picture=user.get("profile_picture"),
+                phone_number=user.get("phone_number"),
+                gender=user.get("gender"),
+                valid_id_type=user.get("valid_id_type"),
+                id_card_image=user.get("id_card_image"),
+                password=user.get("password"),
+                is_verified=user.get("is_verified"),
+                access_token=access_token,  # Adding the generated access_token here
+                items=user.get("items", {})  # Default to empty dict if items not present
+            )
         else:
             logger.warning("Invalid password for user: %s", email_address)
             raise HTTPException(status_code=400, detail="Invalid password")
@@ -610,4 +633,33 @@ def process_paystack_event(data: dict, background_tasks: BackgroundTasks):
     except Exception as e:
         logging.error(f"Error processing Paystack event: {str(e)}")
 
-# Utility functions
+
+async def generate_code():
+    return str(random.randint(1000000000, 9999999999))  # Generate 10-digit code
+
+
+async def save_access_code(uuid: str):
+    current_time = datetime.utcnow()
+
+    # Search for existing code with the same uuid
+    existing_record = await access_collection.find_one({"uuid": uuid})
+
+    if existing_record:
+        # Check if the existing code was generated within the last 15 minutes
+        last_timestamp = existing_record["timestamp"]
+        if current_time - last_timestamp < timedelta(minutes=15):
+            # Return existing code if within 15 minutes
+            return existing_record["code"]
+
+        # Delete the existing record if it's older than 15 minutes
+        await access_collection.delete_one({"uuid": uuid})
+
+    # Generate new code and save to MongoDB
+    new_code = await generate_code()
+    await access_collection.insert_one({
+        "uuid": uuid,
+        "code": new_code,
+        "timestamp": current_time
+    })
+
+    return new_code

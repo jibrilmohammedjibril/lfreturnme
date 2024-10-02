@@ -32,7 +32,7 @@ class ItemRegistration(BaseModel):
     status: Optional[str] = None
     subscription_status: Optional[str] = None
     tier: Optional[str] = None
-    subscription_code:  Optional[str] = None
+    subscription_code: Optional[str] = None
 
 
 class Signup(BaseModel):
@@ -41,12 +41,9 @@ class Signup(BaseModel):
     email_address: EmailStr
     date_of_birth: date
     address: str
-    id_no: str
     profile_picture: str
     phone_number: str
     gender: str
-    valid_id_type: str
-    id_card_image: str
     password: str
     is_verified: bool
 
@@ -76,14 +73,15 @@ class ResponseSignup(BaseModel):
     email_address: Optional[str] = None
     date_of_birth: Optional[date] = None
     address: Optional[str] = None
-    id_no: Optional[str] = None
+    #id_no: Optional[str] = None
     profile_picture: Optional[str] = None
     phone_number: Optional[str] = None
     gender: Optional[str] = None
-    valid_id_type: Optional[str] = None
-    id_card_image: Optional[str] = None
+    #valid_id_type: Optional[str] = None
+    #id_card_image: Optional[str] = None
     password: Optional[str] = None
     is_verified: Optional[bool] = None
+    access_token: Optional[str] = None
     items: Dict[str, ItemRegistration] = {}
 
 
@@ -154,6 +152,7 @@ class SubscriptionUpdate(BaseModel):
     subscription_code: str = Field(..., description="The subscription code to update")
     subscription_status: str = Field(..., description="The status of the subscription")
     tier: Optional[str] = Field(None, description="Subscription tier (optional for inactive subscriptions)")
+
 
 class PaystackWebhookPayload(BaseModel):
     event: str

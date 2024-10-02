@@ -5,21 +5,16 @@ from typing import Optional
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi import Form, UploadFile, File, BackgroundTasks, Request
 from datetime import datetime, timedelta
-from firebase_admin import storage
 from pydantic import EmailStr
 import schemas
 import crud
-import uuid
 from schemas import ItemRegistration, LostFound
 from crud import get_tag_by_tag1, update_tag, save_item_registration, update_user_items, upload_to_firebase, send_email
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.responses import JSONResponse
 import logging
 import time
-from schemas import PaystackWebhookPayload
 from fastapi import FastAPI, Request, HTTPException
-import hmac
-import hashlib
 import json
 
 app = FastAPI()
@@ -45,32 +40,30 @@ async def signup(
         email_address: str = Form(...),
         date_of_birth: str = Form(...),
         address: str = Form(...),
-        id_no: str = Form(...),
         phone_number: str = Form(...),
         gender: str = Form(...),
-        valid_id_type: str = Form(...),
         password: str = Form(...),
         profile_picture: UploadFile = File(...),
-        id_card_image: UploadFile = File(...)
+
 ):
     try:
         date_of_birth_obj = datetime.strptime(date_of_birth, "%Y-%m-%d").date()
 
         # Upload files to Firebase
         profile_picture_url = upload_to_firebase(profile_picture)
-        id_card_image_url = upload_to_firebase(id_card_image)
+        #id_card_image_url = upload_to_firebase(id_card_image)
 
         user = schemas.Signup(
             full_name=full_name,
             email_address=email_address,
             date_of_birth=date_of_birth_obj,
             address=address,
-            id_no=id_no,
+            #id_no=id_no,
             phone_number=phone_number,
             gender=gender,
-            valid_id_type=valid_id_type,
+            #valid_id_type=valid_id_type,
             profile_picture=profile_picture_url,
-            id_card_image=id_card_image_url,
+            #id_card_image=id_card_image_url,
             password=password,
             is_verified=False,
 
@@ -461,11 +454,14 @@ async def verify_otp(request: schemas.OTPVerify):
 
 @app.get("/dashboard/{uuid}", response_model=schemas.ResponseSignup)
 async def get_user_dashboard(uuid: str):
+    # Find the user by uuid
     user = await crud.db["users"].find_one({"uuid": uuid})
 
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
-    items = user.get("items", {})
+
+    # Call the function to generate or retrieve the access token
+    access_token = await crud.save_access_code(uuid)
 
     # Convert MongoDB user document to ResponseSignup model
     user_data = schemas.ResponseSignup(
@@ -474,18 +470,22 @@ async def get_user_dashboard(uuid: str):
         email_address=user.get("email_address"),
         date_of_birth=user.get("date_of_birth"),
         address=user.get("address"),
-        id_no=user.get("id_no"),
+        #id_no=user.get("id_no"),
         profile_picture=user.get("profile_picture"),
         phone_number=user.get("phone_number"),
         gender=user.get("gender"),
-        valid_id_type=user.get("valid_id_type"),
-        id_card_image=user.get("id_card_image"),
+        #valid_id_type=user.get("valid_id_type"),
+        #id_card_image=user.get("id_card_image"),
         password=user.get("password"),
         is_verified=user.get("is_verified"),
         items=user.get("items", {})  # Assuming items are stored as a dictionary
     )
 
-    return user_data
+    # Add the access token to the response data
+    response_data = user_data.dict()
+    response_data["access_token"] = access_token
+
+    return response_data
 
 
 @app.post("/webhook/paystack")
@@ -522,81 +522,6 @@ async def paystack_webhook(request: Request, background_tasks: BackgroundTasks):
         raise HTTPException(status_code=500, detail="Internal Server Error")
 
 
-
-  # assuming this is where your CRUD operations are defined
-
-
-
-@app.post("/webhook/paystack2")
-async def paystack_webhook(request: Request):
-    try:
-        # Read raw body
-        body = await request.body()
-        if not body:
-            raise HTTPException(status_code=400, detail="Empty body in the request.")
-
-        # Parse the JSON payload
-        payload = await request.json()
-    except ValueError:
-        raise HTTPException(status_code=400, detail="Invalid JSON in request body.")
-
-    logging.info(f"Webhook payload: {payload}")
-    print(f"Webhook payload: {payload}")
-
-    # Extract event type
-    # event = payload.get("event")
-    # if not event:
-    #     raise HTTPException(status_code=400, detail="No event type specified in payload.")
-    #
-    # # Process subscription-related events
-    # if event in ["subscription.disable", "subscription.expired"]:
-    #     subscription_code = payload["data"].get("subscription_code")
-    #     if subscription_code:
-    #         await crud.update_user_subscription(subscription_code, "inactive", None)
-    #         return {"message": "Subscription marked as inactive"}
-    #     else:
-    #         raise HTTPException(status_code=400, detail="No subscription code provided.")
-    #
-    # elif event in ["subscription.create", "subscription.enable"]:
-    #     subscription_code = payload["data"].get("subscription_code")
-    #     tier = payload["data"]["plan"].get("name") if payload["data"].get("plan") else None
-    #     if subscription_code and tier:
-    #         await crud.update_user_subscription(subscription_code, "active", tier)
-    #         return {"message": "Subscription marked as active"}
-    #     else:
-    #         raise HTTPException(status_code=400, detail="Missing subscription code or tier.")
-
-    # Default response for unprocessed events
-    return {"message": "Event not processed"}
-
-
-@app.post("/webhook")
-async def paystack_webhook(request: Request):
-    payload = await request.json()
-    try:
-        body = await request.body()  # Read raw body
-        if not body:
-            raise HTTPException(status_code=400, detail="Empty body in the request.")
-
-        payload = await request.json()  # Parse JSON if body is not empty
-    except ValueError:
-        raise HTTPException(status_code=400, detail="Invalid JSON in request body.")
-    logging.info(payload)
-    print(payload)
-    # event = payload.get("event")
-    # subscription_code = payload["data"]["subscription_code"]
-
-    # if event in ["subscription.disable", "subscription.expired"]:
-    #     # Handle subscription cancellation
-    #     await crud.update_user_subscription(subscription_code, "inactive", None)
-    #     return {"message": "Subscription marked as inactive"}
-
-    # elif event in ["subscription.create", "subscription.enable"]:
-    #     # Handle subscription creation or reactivation
-    #     tier = payload["data"]["plan"]["name"]
-    #     await crud.update_user_subscription(subscription_code, "active", tier)
-    #     return {"message": "Subscription marked as active"}
-
-    return {"message": "Event not processed"}
+# assuming this is where your CRUD operations are defined
 
 
