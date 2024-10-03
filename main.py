@@ -203,16 +203,16 @@ async def update_item_status(
 ):
 
     if new_status == "1":
-        user = crud.find_user_by_uuid(uuid)
-        item = crud.find_item_by_tag_id(tagid)
+        user = await crud.find_user_by_uuid(uuid)
+        item = await crud.find_item_by_tag_id(tagid)
         background_tasks.add_task(
             send_email,
             user["email_address"],
-            f"Your {item["name"]} is Now Reported as Lost",
+            f"Your {item.item_name} is Now Reported as Lost",
             f"""
                 <h2>Dear {user['full_name']},</h2>
             
-                <p>We’re sorry to hear that you’ve misplaced your <strong>{item["description"]}</strong>. Rest assured, LFReturnMe is here to help you in your efforts to recover it!</p>
+                <p>We’re sorry to hear that you’ve misplaced your <strong>{item.item_description}</strong>. Rest assured, LFReturnMe is here to help you in your efforts to recover it!</p>
             
                 <p>Your item has now been marked as lost in our system, and we will notify members of our Finders Community to be on the lookout.</p>
             
