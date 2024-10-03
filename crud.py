@@ -28,6 +28,7 @@ import hmac
 import hashlib
 import anyio
 
+
 load_dotenv()
 
 logger = logging.getLogger(__name__)
@@ -303,8 +304,8 @@ async def update_item_status_full(uuid: str, tagid: str, new_status: str, users_
             {"$set": {"items": user["items"]}}
         )
 
-        if user_result.modified_count == 0:
-            raise HTTPException(status_code=500, detail="Failed to update item status in user's items")
+        #if user_result.modified_count == 0:
+         #   raise HTTPException(status_code=500, detail="Failed to update item status in user's items")
 
         # Find item in the items collection by tagid
         item = await items_collection.find_one({"tag_id": tagid})
@@ -317,8 +318,8 @@ async def update_item_status_full(uuid: str, tagid: str, new_status: str, users_
             {"$set": {"status": new_status}}
         )
 
-        if item_result.modified_count == 0:
-            raise HTTPException(status_code=500, detail="Failed to update item status in items collection")
+        #if item_result.modified_count == 0:
+        #    raise HTTPException(status_code=500, detail="Failed to update item status in items collection")
 
         return {"message": "Item status updated successfully", "item_tagid": tagid, "new_status": new_status}
 
@@ -384,19 +385,142 @@ def send_email_otp(receiver_email: str, otp: int):
         raise HTTPException(status_code=500, detail="Failed to send OTP email")
 
 
-def send_email(to_email: str, subject: str, body: str):
-    msg = MIMEText(body)
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
+import smtplib
+import os
+
+
+def send_email(to_email: str, subject: str, body_content: str):
+    # Create a multipart email (text and HTML)
+    msg = MIMEMultipart("alternative")
     msg["Subject"] = subject
     msg["From"] = 'lostfound_no_reply@lfreturnme.com'
     msg["To"] = to_email
+
+    # Define the plain text version of the email content
+    plain_text = f"""
+    {body_content}
+
+    Best regards,
+    LFReturnMe Team
+
+    -- 
+    LFReturnMe
+    Phone: (123) 456-7890
+    Website: www.lfreturnme.com
+    """
+
+    # Define the HTML version of the email content
+    html_body = f"""
+    <html>
+    <head>
+        <style>
+            body {{
+                font-family: Arial, sans-serif;
+                background-color: #f4f4f4;
+                margin: 0;
+                padding: 0;
+                -webkit-font-smoothing: antialiased;
+                -moz-osx-font-smoothing: grayscale;
+            }}
+            .email-container {{
+                max-width: 600px;
+                margin: 20px auto;
+                background-color: #ffffff;
+                padding: 20px;
+                border-radius: 8px;
+                box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+            }}
+            .email-header {{
+                text-align: center;
+                padding-bottom: 20px;
+                border-bottom: 1px solid #e0e0e0;
+            }}
+            .email-header img {{
+                width: 120px;
+            }}
+            .email-body {{
+                padding: 20px;
+                color: #333333;
+                line-height: 1.6;
+            }}
+            .email-body h2 {{
+                color: #333;
+            }}
+            .email-footer {{
+                text-align: center;
+                padding: 20px;
+                color: #999999;
+                border-top: 1px solid #e0e0e0;
+            }}
+            .social-icons {{
+                margin: 10px 0;
+            }}
+            .social-icons img {{
+                width: 24px;
+                margin: 0 10px;
+                vertical-align: middle;
+            }}
+            a {{
+                color: #007BFF;
+                text-decoration: none;
+            }}
+        </style>
+    </head>
+    <body>
+        <div class="email-container">
+            <div class="email-header">
+                <img src="https://res.cloudinary.com/dskwy11us/image/upload/v1727959923/logo2_4_1_usow6b.png" alt="LFReturnMe Logo">
+            </div>
+            <div class="email-body">
+                {body_content}
+                <p>Best regards,<br><strong>LFReturnMe Team</strong></p>
+            </div>
+            <div class="email-footer">
+                <p>Connect with us on social media:</p>
+                <div class="social-icons">
+                    <a href="https://www.instagram.com/lfreturnme" target="_blank">
+                        <img src="https://cdn-icons-png.flaticon.com/512/2111/2111463.png" alt="Instagram">
+                    </a>
+                    <a href="https://twitter.com/LFReturnMe1" target="_blank">
+                        <img src="https://cdn-icons-png.flaticon.com/512/733/733579.png" alt="Twitter">
+                    </a>
+                    <a href="https://www.linkedin.com/company/lfreturnme" target="_blank">
+                        <img src="https://cdn-icons-png.flaticon.com/512/174/174857.png" alt="LinkedIn">
+                    </a>
+                    <a href="https://www.facebook.com/LFReturnMe" target="_blank">
+                        <img src="https://cdn-icons-png.flaticon.com/512/733/733547.png" alt="Facebook">
+                    </a>
+                </div>
+                <p>&copy; {str(datetime.now().year)} LFReturnMe. All rights reserved.</p>
+                <p>Phone: (123) 456-7890 | Website: <a href="https://www.lfreturnme.com">www.lfreturnme.com</a></p>
+            </div>
+        </div>
+    </body>
+    </html>
+    """
+
+    # Attach the plain text and HTML versions of the body
+    msg.attach(MIMEText(plain_text, "plain"))
+    msg.attach(MIMEText(html_body, "html"))
+
+    # Email server configuration
     sender_email = os.getenv("EMAIL_USER")
     sender_password = os.getenv("EMAIL_PASS")
     sender_host = os.getenv("EMAIL_HOST")
 
+    # Sending the email
     with smtplib.SMTP_SSL(sender_host, 465) as server:
         server.login(sender_email, sender_password)
         server.sendmail(sender_email, to_email, msg.as_string())
         print("Email sent successfully!")
+
+
+# Example usage
+
+
+
 
 
 async def verify_user_email(email: str):

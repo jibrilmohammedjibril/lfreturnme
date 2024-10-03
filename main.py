@@ -196,10 +196,37 @@ def send_email_reset(to_email: str, reset_link: str):
 
 @app.put("/update-item-status/")
 async def update_item_status(
+        background_tasks: BackgroundTasks,
         uuid: str = Query(..., title="UUID of the user"),
         tagid: str = Query(..., title="Tag ID / Item ID to find"),
         new_status: str = Query(..., title="New status (integer) to update")
 ):
+
+    if new_status == "1":
+        user = crud.find_user_by_uuid(uuid)
+        item = crud.find_item_by_tag_id(tagid)
+        background_tasks.add_task(
+            send_email,
+            user["email_address"],
+            f"Your {item["name"]} is Now Reported as Lost",
+            f"""
+                <h2>Dear {user['full_name']},</h2>
+            
+                <p>We’re sorry to hear that you’ve misplaced your <strong>{item["description"]}</strong>. Rest assured, LFReturnMe is here to help you in your efforts to recover it!</p>
+            
+                <p>Your item has now been marked as lost in our system, and we will notify members of our Finders Community to be on the lookout.</p>
+            
+                <h3>Next Steps:</h3>
+                <ul>
+                    <li><strong>Track Updates:</strong> We’ll keep you informed if any updates or reports come in regarding your lost item.</li>
+                    <li><strong>Spread the Word:</strong> You can also share your lost item details with your network, and encourage others to join our Finders Community to increase your chances of recovery.</li>
+                    <li><strong>Recovery Process:</strong> If your item is found, we’ll notify you immediately with instructions on how to claim it.</li>
+                </ul>
+            
+                <p>If you have any questions or need further assistance, feel free to reach out to our support team. We’re with you every step of the way!</p>
+            """
+        )
+
     return await crud.update_item_status_full(uuid, tagid, new_status, crud.users_collection, crud.items_collection)
 
 
@@ -259,10 +286,24 @@ async def add_lost_item(
         await crud.add_to_lost(lost)
         # send mail to the person that lost it
         logging.info(f"Time taken for adding to lost collection: {time.time() - start_time} seconds")
-        send_email(to_email=lost.email,
-                   subject="Item Lost",
-                   body=f" Dear {lost.name}, you have reported item your lost."
-                   )
+        send_email(lost.email,
+                   "We've Received Your Lost Item Report",
+                   f"""
+                       <h2>Dear {lost.name},</h2>
+
+                       <p>Thank you for trusting LFReturnMe to help you recover your lost <strong>{lost.description}</strong>. Our Finders Community is now on alert, and we will do our best to assist you in locating your item.</p>
+
+                       <h3>Here’s what happens next:</h3>
+                       <ul>
+                           <li><strong>Item Registration:</strong> Your lost item has been added to our system, and we’re actively monitoring for any reports from our Finders Community.</li>
+                           <li><strong>Notifications:</strong> If someone reports finding an item matching your description, you will be notified immediately with further instructions.</li>
+                           <li><strong>Spread the Word:</strong> You can increase your chances by sharing the details of your lost item with your friends, family, or social media. We’re also working on expanding our Finders Network to help connect people faster.</li>
+                       </ul>
+
+                       <p><strong>Need extra help?</strong> If you’d like to benefit from additional recovery services, feel free to explore our subscription plans <a href="[link to plans]">here</a>, which offer enhanced recovery support, priority notifications, and more.</p>
+
+                       <p>For any questions or assistance, don’t hesitate to contact us at [support email or phone number].</p>
+                   """)
         # Send email to lfreturme
         send_email(lf_email, "reported  Lost item",
                    f"item {lost.item} has been reported lost at {lost.location}, this item is not registered and the person that lost is {lost.name}")
@@ -285,7 +326,7 @@ async def add_lost_item(
 
         # Update item status to lost using the update tag endpoint
 
-        await crud.update_item_status_full(item.uuid, lost.tag_id, "2", crud.users_collection,
+        await crud.update_item_status_full(item.uuid, lost.tag_id, "1", crud.users_collection,
                                            crud.items_collection)
         logging.info(f"Time taken for updating item status: {time.time() - start_time} seconds")
         await crud.add_to_lost(lost)
@@ -304,6 +345,7 @@ async def add_lost_item(
 
 @app.post("/found/")
 async def add_found_item(
+        background_tasks: BackgroundTasks,
         item: str = Form(...),
         name: str = Form(...),
         location: str = Form(...),
@@ -338,16 +380,39 @@ async def add_found_item(
     if found.tag_id is None:
         # Add to found collection
         await crud.add_to_found(found)
-        # send mail to the person that lost it
-        send_email(found.email,
-                   "Item Found",
-                   f"item your items  {found.name} has been reported found"
-                   )
-        # Send email to lfreturme
-        send_email(lf_email,
-                   "reported  Lost item",
-                   f"item {found.item} has been reported found at {found.location},the item is not registered and the person that found is{found.name}")
+
+        # Send thank-you email to the person who found the item
+        background_tasks.add_task(
+            send_email,
+            found.email,
+            "Thank You for Reporting a Found Item on LFReturnMe",
+            f"""
+            <h2>Thank You for Reporting a Found Item!</h2>
+            <p>Dear {found.name},</p>
+            <p>We are thrilled to receive your report about the <strong>{found.description}</strong> you found! Thank you for playing an 
+            important role in reconnecting lost items with their rightful owners. Your contribution makes a real difference.</p>
+            <p>Our team is actively working on matching the found item with its owner. We’ll keep you updated on the next steps.</p>
+            <h3>What happens next:</h3>
+            <ul>
+                <li>If the owner of the item claims it, we’ll facilitate the recovery process through our platform.</li>
+                <li>Should the owner wish to express their gratitude, there may be a small token of appreciation sent your way.</li>
+            </ul>
+            <p>In the meantime, thank you for being an amazing part of our Finders Community! If you have any questions or concerns, feel free to contact us.</p>
+            """
+        )
+
+        # Send email to LFReturnMe team
+        background_tasks.add_task(
+            send_email,
+            lf_email,
+            "Item found with a tag",
+            f"""Item {found.item} has been found at {found.location}. 
+            The item is a {found.description}, reported by {found.name}. 
+            The finder's contacts are {found.phone_number} and {found.email}."""
+        )
+
         return JSONResponse(status_code=200, content={"message": "Item added to found and email sent"})
+
     else:
         # Search items collection by tag_id
         item = await crud.find_item_by_tag_id(found.tag_id)
@@ -360,17 +425,41 @@ async def add_found_item(
             raise HTTPException(status_code=404, detail="User not found")
 
         # Update item status to lost using the update tag endpoint
-
-        await crud.update_item_status_full(item.uuid, found.tag_id, "1", crud.users_collection,
-                                           crud.items_collection)
+        await crud.update_item_status_full(item.uuid, found.tag_id, "2", crud.users_collection, crud.items_collection)
         await crud.add_to_found(found)
-        # Send email to user
-        send_email(user['email_address'], "Item Found", f"Your item {found.name} has been  found.")
-        # send email to lfreturnme
-        send_email(lf_email, "Item Found",
-                   f"""{user["full_name"]}'s  registered item {item.item_name} has been reported found.""")
 
-        return JSONResponse(status_code=200, content={"message": "Item status updated and email sent to user"})
+        # Send email to LFReturnMe team
+        background_tasks.add_task(
+            send_email,
+            lf_email,
+            "Item found with a tag",
+            f"""Item {found.item} has been found at {found.location}. 
+            The item is a {found.description}, the tag ID is {found.tag_id}, reported by {found.name}. 
+            The finder's contacts are {found.phone_number} and {found.email}."""
+        )
+
+        # Send thank-you email to the finder
+        background_tasks.add_task(
+            send_email,
+            found.email,
+            "Thank You for Reporting a Found Item on LFReturnMe",
+            f"""
+            <h2>Thank You for Reporting a Found Item!</h2>
+            <p>Dear {found.name},</p>
+            <p>We are thrilled to receive your report about the <strong>{found.description}</strong> you found! Thank you for playing an 
+            important role in reconnecting lost items with their rightful owners. Your contribution makes a real difference.</p>
+            <p>Our team is actively working on matching the found item with its owner. We’ll keep you updated on the next steps.</p>
+            <h3>What happens next:</h3>
+            <ul>
+                <li>If the owner of the item claims it, we’ll facilitate the recovery process through our platform.</li>
+                <li>Should the owner wish to express their gratitude, there may be a small token of appreciation sent your way.</li>
+            </ul>
+            <p>In the meantime, thank you for being an amazing part of our Finders Community! If you have any questions or concerns, feel free to contact us.</p>
+            """
+        )
+
+        return JSONResponse(status_code=200,
+                            content={"message": "Item status updated and emails sent to user and finder"})
 
 
 @app.put("/update-profile/")
@@ -521,7 +610,4 @@ async def paystack_webhook(request: Request, background_tasks: BackgroundTasks):
         logging.error(f"Error processing webhook: {str(e)}")
         raise HTTPException(status_code=500, detail="Internal Server Error")
 
-
 # assuming this is where your CRUD operations are defined
-
-
