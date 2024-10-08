@@ -583,6 +583,10 @@ async def paystack_webhook(request: Request, background_tasks: BackgroundTasks):
         # Get the raw request body
         payload = await request.body()
         logging.info(payload)
+        print(payload)
+
+        # Log the payload for debugging
+        logging.debug(f"Received payload: {payload.decode('utf-8')}")
 
         # Paystack sends a header 'x-paystack-signature' for webhook validation
         paystack_signature = request.headers.get('x-paystack-signature')
@@ -595,16 +599,16 @@ async def paystack_webhook(request: Request, background_tasks: BackgroundTasks):
         try:
             event = json.loads(payload.decode("utf-8"))
             data = event.get('data', {})
+            event_type = event.get('event')
         except json.JSONDecodeError as e:
             logging.error(f"JSON decode error: {str(e)}")
             raise HTTPException(status_code=400, detail="Invalid JSON format")
 
         # Acknowledge receipt immediately by returning 200 OK
-        background_tasks.add_task(crud.process_paystack_event, data, event.get('event'), background_tasks)
+        background_tasks.add_task(crud.process_paystack_event, data, event_type, background_tasks)
 
         return {"status": "success"}
 
     except Exception as e:
         logging.error(f"Error processing webhook: {str(e)}")
         raise HTTPException(status_code=500, detail="Internal Server Error")
-
