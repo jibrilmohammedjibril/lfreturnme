@@ -676,15 +676,18 @@ async def process_paystack_event(data: dict, event_type: str, background_tasks: 
 
         # Extract customer and email from data
         customer = data.get('customer', {})
-        email = customer.get('email', None)  # Initialize email as None if not present
+
+        # Initialize email as None if not present
 
         async def async_process():
             # Find the item in the items collection
-            global email
+
             item = await items_collection.find_one({'tag_id': tag_id})
 
             if item:
                 update_fields = {}
+
+                email = customer.get('email')
 
                 # Process based on event type
                 if event_type == 'charge.success':
