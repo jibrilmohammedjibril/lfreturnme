@@ -152,6 +152,7 @@ class SubscriptionUpdate(BaseModel):
     subscription_code: str = Field(..., description="The subscription code to update")
     subscription_status: str = Field(..., description="The status of the subscription")
     tier: Optional[str] = Field(None, description="Subscription tier (optional for inactive subscriptions)")
+    subscription_end: Optional[str] = Field(None, description="Date for subscription expiration")
 
 
 class PaystackWebhookPayload(BaseModel):
