@@ -654,6 +654,9 @@ async def get_subscription_code(customer_email: str) -> str:
         return f"An error occurred: {str(e)}"
 
 
+from datetime import datetime, timedelta
+
+
 async def process_paystack_event(data: dict, event_type: str, background_tasks: BackgroundTasks):
     try:
         # Extract metadata and custom_fields
@@ -676,17 +679,14 @@ async def process_paystack_event(data: dict, event_type: str, background_tasks: 
 
         # Extract customer and email from data
         customer = data.get('customer', {})
-
-        # Initialize email as None if not present
+        email = customer.get('email')
 
         async def async_process():
             # Find the item in the items collection
-
             item = await items_collection.find_one({'tag_id': tag_id})
 
             if item:
                 update_fields = {}
-
                 email = customer.get('email')
 
                 # Process based on event type
@@ -699,19 +699,31 @@ async def process_paystack_event(data: dict, event_type: str, background_tasks: 
                     else:
                         update_fields['subscription_status'] = 'one-time'
                         amount = data.get('amount', 0) / 100
-                        update_fields['tier'] = 'Basic' if amount == 250 else 'Premium' if amount == 500 else 'Standard'
+                        update_fields['tier'] = 'Basic' if amount == 250 else 'Premium' if amount == 1000 else 'Standard' if amount == 300 else "Passport" if amount == 1500 else "super standard"
 
                     # Update the email address if available
                     if email:
                         update_fields['email_address'] = email
                     else:
                         email = item.get('email_address')  # Retrieve from item if not in customer
+                elif event_type == 'subscription.not_renew':
+                    # Handle subscription non-renewal
+                    next_payment_date_str = data.get('next_payment_date')
+                    if next_payment_date_str:
+                        # Parse the next_payment_date from string to datetime
+                        subscription_end = datetime.strptime(next_payment_date_str, "%Y-%m-%dT%H:%M:%S.%fZ")
+                        update_fields['subscription_end'] = subscription_end
 
-                elif event_type in ['subscription.disable', 'subscription.not_renew']:
-                    # Handle subscription cancellation
-                    subscription_end = datetime.now() + timedelta(days=30)
-                    update_fields['subscription_status'] = 'cancelling'
-                    update_fields['subscription_end'] = subscription_end
+                    else:
+                        logging.warning("next_payment_date not found in data")
+                        # If next_payment_date is not available, you might want to set a default
+                        subscription_end = datetime.now()  # Default to now
+                        update_fields['subscription_end'] = subscription_end
+
+                elif event_type == 'subscription.disable':
+                    # Handle subscription cancellation immediately
+                    update_fields['subscription_status'] = 'cancelled'
+                    update_fields['subscription_end'] = datetime.now()
 
                 else:
                     logging.info(f"Unhandled event type: {event_type}")
