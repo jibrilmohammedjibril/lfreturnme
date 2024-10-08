@@ -601,6 +601,7 @@ async def paystack_webhook(request: Request, background_tasks: BackgroundTasks):
             data = event.get('data', {})
             event_type = event.get('event')
             logging.info(event_type)
+            logging.info(data)
         except json.JSONDecodeError as e:
             logging.error(f"JSON decode error: {str(e)}")
             raise HTTPException(status_code=400, detail="Invalid JSON format")
