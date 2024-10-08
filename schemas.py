@@ -33,6 +33,7 @@ class ItemRegistration(BaseModel):
     subscription_status: Optional[str] = None
     tier: Optional[str] = None
     subscription_code: Optional[str] = None
+    subscription_end: Optional[str] = None
 
 
 class Signup(BaseModel):
