@@ -582,6 +582,8 @@ async def paystack_webhook(request: Request, background_tasks: BackgroundTasks):
     try:
         # Get the raw request body
         payload = await request.body()
+        logging.info(payload)
+        print(payload)
 
         # Log the payload for debugging
         logging.debug(f"Received payload: {payload.decode('utf-8')}")
