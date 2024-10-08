@@ -706,7 +706,7 @@ async def process_paystack_event(data: dict, event_type: str, background_tasks: 
                         update_fields['email_address'] = email
                     else:
                         email = item.get('email_address')  # Retrieve from item if not in customer
-                elif event_type == 'subscription.not_renew':
+                elif event_type == "subscription.not_renew":
                     logging.info("sub canceled elif tirggered")
                     print("starting elfi")
                     # Handle subscription non-renewal
