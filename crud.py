@@ -750,6 +750,7 @@ async def process_paystack_event(data: dict, event_type: str, background_tasks: 
                     else:
                         logging.warning(f"User with uuid {uuid} not found.")
 
+                    email = customer.get('email')
                     cleaned_email = clean_email(email)
                     logging.info(f"your cleaned email is {cleaned_email}")
 
