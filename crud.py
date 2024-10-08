@@ -707,6 +707,7 @@ async def process_paystack_event(data: dict, event_type: str, background_tasks: 
                     else:
                         email = item.get('email_address')  # Retrieve from item if not in customer
                 elif event_type == 'subscription.not_renew':
+                    logging.info("sub canceled elif tirggered")
                     # Handle subscription non-renewal
                     next_payment_date_str = data.get('next_payment_date')
                     if next_payment_date_str:
