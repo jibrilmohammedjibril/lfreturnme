@@ -674,13 +674,13 @@ async def process_paystack_event(data: dict, event_type: str, background_tasks: 
         tag_id = str(tag_id)
         logging.info(f"tag_id found: {tag_id}")
 
-        # Extract email from customer data
+        # Extract customer and email from data
         customer = data.get('customer', {})
-        email = customer.get('email')
+        email = customer.get('email', None)  # Initialize email as None if not present
 
-        # Ensure async database calls are handled correctly
         async def async_process():
             # Find the item in the items collection
+            global email
             item = await items_collection.find_one({'tag_id': tag_id})
 
             if item:
@@ -699,16 +699,14 @@ async def process_paystack_event(data: dict, event_type: str, background_tasks: 
                         update_fields['tier'] = 'Basic' if amount == 250 else 'Premium' if amount == 500 else 'Standard'
 
                     # Update the email address if available
-                    email = customer.get('email')
                     if email:
                         update_fields['email_address'] = email
                     else:
-                        email = item.get('email_address')
+                        email = item.get('email_address')  # Retrieve from item if not in customer
 
                 elif event_type in ['subscription.disable', 'subscription.not_renew']:
                     # Handle subscription cancellation
-                    # Mark subscription as 'cancelling' and set subscription_end date
-                    subscription_end = datetime.now() + timedelta(days=30)  # Adjust based on your billing cycle
+                    subscription_end = datetime.now() + timedelta(days=30)
                     update_fields['subscription_status'] = 'cancelling'
                     update_fields['subscription_end'] = subscription_end
 
@@ -722,7 +720,6 @@ async def process_paystack_event(data: dict, event_type: str, background_tasks: 
                 # Fetch the updated item
                 updated_item = await items_collection.find_one({'_id': item['_id']})
 
-                # Remove the '_id' field before embedding it in the user's items
                 if '_id' in updated_item:
                     del updated_item['_id']
 
@@ -733,35 +730,33 @@ async def process_paystack_event(data: dict, event_type: str, background_tasks: 
                     user = await users_collection.find_one({'uuid': uuid})
                     if user:
                         user_items = user.get('items', {})
-                        # Ensure keys are strings
                         user_items = {str(k): v for k, v in user_items.items()}
-                        logging.info(f"user_items keys: {list(user_items.keys())}")
 
                         if tag_id in user_items:
-                            # Update the entire item under the user's items
                             result = await users_collection.update_one(
                                 {'_id': user['_id']},
                                 {'$set': {f'items.{tag_id}': updated_item}}
                             )
                             logging.info(f"Updated user item for tag {tag_id} to match items collection.")
-                            logging.debug(f"Update result: {result.raw_result}")
                         else:
                             logging.warning(f"Tag {tag_id} not found in user's items.")
                     else:
                         logging.warning(f"User with uuid {uuid} not found.")
 
-                    email = customer.get('email')
+                # Ensure email is available before proceeding
+                if email:
                     cleaned_email = clean_email(email)
-                    logging.info(f"your cleaned email is {cleaned_email}")
+                    logging.info(f"Cleaned email: {cleaned_email}")
 
-                    # Add the email sending task to the background tasks
+                    # Add email sending task to background tasks
                     background_tasks.add_task(send_email_webhook, cleaned_email)
+                else:
+                    logging.warning("No email found for this transaction.")
 
-        # Run async function in the background task
         await async_process()
 
     except Exception as e:
-        logging.error(f"Error processing Paystack event:{str(e)}")
+        logging.error(f"Error processing Paystack event: {str(e)}")
 
 
 async def generate_code():
