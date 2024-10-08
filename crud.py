@@ -757,7 +757,7 @@ async def process_paystack_event(data: dict, event_type: str, background_tasks: 
                     background_tasks.add_task(send_email_webhook, cleaned_email)
 
         # Run async function in the background task
-        anyio.from_thread.run(async_process)
+        await async_process()
 
     except Exception as e:
         logging.error(f"Error processing Paystack event:{str(e)}")
