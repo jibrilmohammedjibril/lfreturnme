@@ -19,7 +19,7 @@ from bson import ObjectId
 from pymongo import MongoClient
 import firebase_admin
 from firebase_admin import credentials, storage
-from typing import Optional
+from typing import Optional, Tuple
 from pymongo.collection import Collection
 from datetime import datetime, timedelta
 from pymongo import ReturnDocument
@@ -654,39 +654,57 @@ async def get_subscription_code(customer_email: str) -> str:
         return f"An error occurred: {str(e)}"
 
 
-from datetime import datetime, timedelta
+async def extract_numbers_and_next_payment_date(data: dict) -> Tuple[Optional[str], Optional[str]]:
+    # Extract the email from the 'customer' field in the data
+    email = data.get('customer', {}).get('email', '')
+
+    # Extract the next payment date from the data
+    next_payment_date = data.get('next_payment_date', None)
+
+    # Use a regular expression to match the numbers between '+' and '@' in the email
+    match = re.search(r'\+(\d+)\@', email)
+
+    if match:
+        # Return the matched numbers and the next payment date
+        return match.group(1), next_payment_date
+    else:
+        # Return None for the numbers and next payment date if no match is found
+        return None, next_payment_date
 
 
 async def process_paystack_event(data: dict, event_type: str, background_tasks: BackgroundTasks):
-
     logging.info(f"ppe {data}")
     logging.info(f"ppe {event_type}")
 
-    try:
-        # Extract metadata and custom_fields
-        metadata = data.get('metadata', {})
-        custom_fields = metadata.get('custom_fields', [])
-        logging.info(f"ppe {metadata}")
-        logging.info(f"ppe {custom_fields}")
+    if event_type == "subscription.not_renew":
+        tag_id, next_payment_date = await extract_numbers_and_next_payment_date(data)
 
+    else:
 
-        # Log the entire custom_fields for debugging
-        logging.debug(f"Full custom_fields: {custom_fields}")
+        try:
+            # Extract metadata and custom_fields
+            metadata = data.get('metadata', {})
+            custom_fields = metadata.get('custom_fields', [])
+            logging.info(f"ppe {metadata}")
+            logging.info(f"ppe {custom_fields}")
 
-        # Extract the tag_id from custom_fields
-        tag_id = next((field.get('value') for field in custom_fields if field.get('variable_name') == 'tag_id'), None)
+            # Log the entire custom_fields for debugging
+            logging.debug(f"Full custom_fields: {custom_fields}")
 
-        if not tag_id:
-            logging.warning(f"tag_id not found in custom_fields: {custom_fields}")
-            return
+            # Extract the tag_id from custom_fields
+            tag_id = next((field.get('value') for field in custom_fields if field.get('variable_name') == 'tag_id'), None)
 
-        # Ensure tag_id is a string
-        tag_id = str(tag_id)
-        logging.info(f"tag_id found: {tag_id}")
+            if not tag_id:
+                logging.warning(f"tag_id not found in custom_fields: {custom_fields}")
+                return
 
-        # Extract customer and email from data
-        customer = data.get('customer', {})
-        email = customer.get('email')
+            # Ensure tag_id is a string
+            tag_id = str(tag_id)
+            logging.info(f"tag_id found: {tag_id}")
+
+            # Extract customer and email from data
+            customer = data.get('customer', {})
+            email = customer.get('email')
 
         async def async_process():
             # Find the item in the items collection
@@ -706,7 +724,8 @@ async def process_paystack_event(data: dict, event_type: str, background_tasks: 
                     else:
                         update_fields['subscription_status'] = 'one-time'
                         amount = data.get('amount', 0) / 100
-                        update_fields['tier'] = 'Basic' if amount == 250 else 'Premium' if amount == 1000 else 'Standard' if amount == 300 else "Passport" if amount == 1500 else "super standard"
+                        update_fields[
+                            'tier'] = 'Basic' if amount == 250 else 'Premium' if amount == 1000 else 'Standard' if amount == 300 else "Passport" if amount == 1500 else "super standard"
 
                     # Update the email address if available
                     if email:
@@ -717,7 +736,7 @@ async def process_paystack_event(data: dict, event_type: str, background_tasks: 
                     logging.info("sub canceled elif tirggered")
                     print("starting elfi")
                     # Handle subscription non-renewal
-                    next_payment_date_str = data.get('next_payment_date')
+                    next_payment_date_str = next_payment_date
                     if next_payment_date_str:
                         # Parse the next_payment_date from string to datetime
                         subscription_end = datetime.strptime(next_payment_date_str, "%Y-%m-%dT%H:%M:%S.%fZ")
