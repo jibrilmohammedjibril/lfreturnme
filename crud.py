@@ -23,6 +23,8 @@ import hmac
 import hashlib
 import schedule
 import time
+from dateutil import parser
+
 
 load_dotenv()
 
@@ -705,6 +707,8 @@ async def process_paystack_event(data: dict, event_type: str, background_tasks: 
         logging.error(f"Error processing Paystack event: {str(e)}")
 
 
+
+
 async def async_process(event_type, tag_id, email, data, background_tasks):
     try:
         # Find the item in the items collection
@@ -719,6 +723,7 @@ async def async_process(event_type, tag_id, email, data, background_tasks):
                     update_fields['subscription_status'] = 'active'
                     update_fields['tier'] = data['plan'].get('name', item.get('tier', ''))
                     update_fields["subscription_code"] = await get_subscription_code(email)
+
                 else:
                     update_fields['subscription_status'] = 'one-time'
                     amount = data.get('amount', 0) / 100
@@ -727,7 +732,7 @@ async def async_process(event_type, tag_id, email, data, background_tasks):
                         'Premium' if amount == 1000 else
                         'Standard' if amount == 300 else
                         "Passport" if amount == 1500 else
-                        "super standard"
+                        "Custom"
                     )
 
                 if email:
@@ -740,7 +745,7 @@ async def async_process(event_type, tag_id, email, data, background_tasks):
                 next_payment_date_str = data.get('next_payment_date')
                 if next_payment_date_str:
                     # Parse the next_payment_date from string to datetime
-                    subscription_end = datetime.strptime(next_payment_date_str, "%Y-%m-%d")
+                    subscription_end = parser.parse(next_payment_date_str)
                     update_fields['subscription_end'] = subscription_end
                 else:
                     logging.warning("next_payment_date not found in data")
@@ -791,6 +796,14 @@ async def async_process(event_type, tag_id, email, data, background_tasks):
                 background_tasks.add_task(send_email_webhook, cleaned_email)
             else:
                 logging.warning("No email found for this transaction.")
+
+        # Example of filtering items by a date field
+        # Filter items whose subscription_end date is greater than or equal to today
+        # filter_date = datetime.now()
+        # filtered_items = items_collection.find({'subscription_end': {'$gte': filter_date}})
+        # async for filtered_item in filtered_items:
+        #     logging.info(f"Filtered item: {filtered_item}")
+
     except Exception as e:
         logging.error(f"Error inside async_process: {str(e)}")
 
