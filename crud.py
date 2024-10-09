@@ -1,3 +1,4 @@
+import asyncio
 import base64
 import json
 import os
@@ -26,7 +27,8 @@ from pymongo import ReturnDocument
 from dotenv import load_dotenv
 import hmac
 import hashlib
-import anyio
+import schedule
+import time
 
 load_dotenv()
 
@@ -690,7 +692,8 @@ async def process_paystack_event(data: dict, event_type: str, background_tasks: 
             logging.info(f"Custom fields: {custom_fields}")
 
             # Extract the tag_id from custom_fields
-            tag_id = next((field.get('value') for field in custom_fields if field.get('variable_name') == 'tag_id'), None)
+            tag_id = next((field.get('value') for field in custom_fields if field.get('variable_name') == 'tag_id'),
+                          None)
             customer = data.get('customer', {})
             email = customer.get('email')
 
@@ -797,6 +800,7 @@ async def async_process(event_type, tag_id, email, data, background_tasks):
     except Exception as e:
         logging.error(f"Error inside async_process: {str(e)}")
 
+
 async def generate_code():
     return str(random.randint(1000000000, 9999999999))  # Generate 10-digit code
 
@@ -826,3 +830,38 @@ async def save_access_code(uuid: str):
     })
 
     return new_code
+
+
+async def update_expired_subscriptions():
+    current_date = datetime.now()
+
+    # Find items with expired subscriptions
+    expired_items = await items_collection.find(
+        {"subscription_end": {"$lt": current_date}, "subscription_status": "active"}).to_list(length=None)
+
+    for item in expired_items:
+        item_id = item['item_id']
+        tag_id = item['tag_id']
+        user_uuid = item['uuid']
+
+        # Update the item's subscription status to inactive in the items collection
+        await items_collection.update_one({"item_id": item_id}, {"$set": {"subscription_status": "inactive"}})
+
+        # Update the corresponding item status to inactive in the user's collection
+        await users_collection.update_one(
+            {"uuid": user_uuid, "items.tag_id": tag_id},
+            {"$set": {"items.$.status": "inactive"}}
+        )
+
+
+# Create a synchronous wrapper to call the async function
+def scheduled_task():
+    asyncio.run(update_expired_subscriptions())
+
+
+# Schedule the task to run every day at a specified time
+schedule.every().day.at("00:00").do(scheduled_task)
+
+while True:
+    schedule.run_pending()
+    time.sleep(60)
