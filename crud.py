@@ -3,25 +3,19 @@ import base64
 import json
 import os
 import re
-import smtplib
-from email.mime.multipart import MIMEMultipart
-from email.mime.text import MIMEText
 import random
 import httpx
 import motor.motor_asyncio
 from fastapi import UploadFile, HTTPException, BackgroundTasks
-from motor.motor_asyncio import AsyncIOMotorClient
 import schemas
 import uuid
 import bcrypt
 import logging
-from schemas import Tag, ItemRegistration, Dashboard, UpdateProfileRequest
+from schemas import Tag, ItemRegistration
 from bson import ObjectId
-from pymongo import MongoClient
 import firebase_admin
 from firebase_admin import credentials, storage
-from typing import Optional, Tuple
-from pymongo.collection import Collection
+from typing import Optional
 from datetime import datetime, timedelta
 from pymongo import ReturnDocument
 from dotenv import load_dotenv
@@ -857,6 +851,10 @@ async def update_expired_subscriptions():
 # Create a synchronous wrapper to call the async function
 def scheduled_task():
     asyncio.run(update_expired_subscriptions())
+
+
+# Run the task immediately after the code is executed
+scheduled_task()
 
 
 # Schedule the task to run every day at a specified time
