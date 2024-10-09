@@ -759,6 +759,7 @@ async def async_process(event_type, tag_id, email, data, background_tasks):
                 logging.info(f"Unhandled event type: {event_type}")
                 return
 
+
             # Update the item in the items collection
             await items_collection.update_one({'_id': item['_id']}, {'$set': update_fields})
 
