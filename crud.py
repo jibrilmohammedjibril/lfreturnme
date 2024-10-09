@@ -654,7 +654,7 @@ async def get_subscription_code(customer_email: str) -> str:
         return f"An error occurred: {str(e)}"
 
 
-async def extract_numbers_and_next_payment_date(data: dict) -> Tuple[Optional[str], Optional[str]]:
+def extract_numbers_and_next_payment_date(data: dict) -> tuple[None, None, str]:
     # Extract the email from the 'customer' field in the data
     email = data.get('customer', {}).get('email', '')
 
@@ -666,27 +666,29 @@ async def extract_numbers_and_next_payment_date(data: dict) -> Tuple[Optional[st
 
     if match:
         # Return the matched numbers and the next payment date
-        return match.group(1), next_payment_date
+        return match.group(1), next_payment_date, email
     else:
         # Return None for the numbers and next payment date if no match is found
-        return None, next_payment_date
+        return None, next_payment_date, email
 
 
 async def process_paystack_event(data: dict, event_type: str, background_tasks: BackgroundTasks):
+
     logging.info(f"ppe {data}")
     logging.info(f"ppe {event_type}")
 
-    if event_type == "subscription.not_renew":
-        tag_id, next_payment_date = await extract_numbers_and_next_payment_date(data)
+    try:
 
-    else:
+        if event_type == "subscription.not_renew":
+            tag_id, next_payment_date, email = extract_numbers_and_next_payment_date(data)
+        else:
 
-        try:
             # Extract metadata and custom_fields
             metadata = data.get('metadata', {})
             custom_fields = metadata.get('custom_fields', [])
             logging.info(f"ppe {metadata}")
             logging.info(f"ppe {custom_fields}")
+
 
             # Log the entire custom_fields for debugging
             logging.debug(f"Full custom_fields: {custom_fields}")
@@ -694,17 +696,18 @@ async def process_paystack_event(data: dict, event_type: str, background_tasks: 
             # Extract the tag_id from custom_fields
             tag_id = next((field.get('value') for field in custom_fields if field.get('variable_name') == 'tag_id'), None)
 
-            if not tag_id:
-                logging.warning(f"tag_id not found in custom_fields: {custom_fields}")
-                return
-
-            # Ensure tag_id is a string
-            tag_id = str(tag_id)
-            logging.info(f"tag_id found: {tag_id}")
-
-            # Extract customer and email from data
             customer = data.get('customer', {})
             email = customer.get('email')
+
+        if not tag_id:
+            logging.warning(f"tag_id not found : {tag_id}")
+            return
+
+        # Ensure tag_id is a string
+        tag_id = str(tag_id)
+        logging.info(f"tag_id found: {tag_id}")
+
+        # Extract customer and email from data
 
         async def async_process():
             # Find the item in the items collection
@@ -724,8 +727,7 @@ async def process_paystack_event(data: dict, event_type: str, background_tasks: 
                     else:
                         update_fields['subscription_status'] = 'one-time'
                         amount = data.get('amount', 0) / 100
-                        update_fields[
-                            'tier'] = 'Basic' if amount == 250 else 'Premium' if amount == 1000 else 'Standard' if amount == 300 else "Passport" if amount == 1500 else "super standard"
+                        update_fields['tier'] = 'Basic' if amount == 250 else 'Premium' if amount == 1000 else 'Standard' if amount == 300 else "Passport" if amount == 1500 else "super standard"
 
                     # Update the email address if available
                     if email:
@@ -736,7 +738,7 @@ async def process_paystack_event(data: dict, event_type: str, background_tasks: 
                     logging.info("sub canceled elif tirggered")
                     print("starting elfi")
                     # Handle subscription non-renewal
-                    next_payment_date_str = next_payment_date
+                    next_payment_date_str = data.get('next_payment_date')
                     if next_payment_date_str:
                         # Parse the next_payment_date from string to datetime
                         subscription_end = datetime.strptime(next_payment_date_str, "%Y-%m-%dT%H:%M:%S.%fZ")
