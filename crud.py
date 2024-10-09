@@ -658,19 +658,16 @@ from datetime import datetime, timedelta
 
 
 async def process_paystack_event(data: dict, event_type: str, background_tasks: BackgroundTasks):
-    print(data)
-    logging.info(data)
-    print(event_type)
-    logging.info(event_type)
+
+    logging.info(f"ppe {data}")
+    logging.info(f"ppe {event_type}")
 
     try:
         # Extract metadata and custom_fields
         metadata = data.get('metadata', {})
         custom_fields = metadata.get('custom_fields', [])
-        print(metadata)
-        logging.info(metadata)
-        print(custom_fields)
-        logging.info(custom_fields)
+        logging.info(f"ppe {metadata}")
+        logging.info(f"ppe {custom_fields}")
 
 
         # Log the entire custom_fields for debugging

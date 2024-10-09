@@ -583,7 +583,7 @@ async def paystack_webhook(request: Request, background_tasks: BackgroundTasks):
         # Get the raw request body
         payload = await request.body()
         logging.info(payload)
-        print(payload)
+
 
         # Log the payload for debugging
         logging.debug(f"Received payload: {payload.decode('utf-8')}")
@@ -600,8 +600,8 @@ async def paystack_webhook(request: Request, background_tasks: BackgroundTasks):
             event = json.loads(payload.decode("utf-8"))
             data = event.get('data', {})
             event_type = event.get('event')
-            logging.info(event_type)
-            logging.info(data)
+            #logging.info(event_type)
+            #logging.info(data)
         except json.JSONDecodeError as e:
             logging.error(f"JSON decode error: {str(e)}")
             raise HTTPException(status_code=400, detail="Invalid JSON format")
