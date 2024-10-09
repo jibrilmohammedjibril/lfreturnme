@@ -673,136 +673,129 @@ def extract_numbers_and_next_payment_date(data: dict) -> tuple[None, None, str]:
 
 
 async def process_paystack_event(data: dict, event_type: str, background_tasks: BackgroundTasks):
-
-    logging.info(f"ppe {data}")
-    logging.info(f"ppe {event_type}")
+    logging.info(f"Processing Paystack event with data: {data} and event_type: {event_type}")
 
     try:
+        # Initialize variables
+        tag_id = None
+        email = None
 
         if event_type == "subscription.not_renew":
             tag_id, next_payment_date, email = extract_numbers_and_next_payment_date(data)
         else:
-
             # Extract metadata and custom_fields
             metadata = data.get('metadata', {})
             custom_fields = metadata.get('custom_fields', [])
-            logging.info(f"ppe {metadata}")
-            logging.info(f"ppe {custom_fields}")
-
-
-            # Log the entire custom_fields for debugging
-            logging.debug(f"Full custom_fields: {custom_fields}")
+            logging.info(f"Metadata: {metadata}")
+            logging.info(f"Custom fields: {custom_fields}")
 
             # Extract the tag_id from custom_fields
             tag_id = next((field.get('value') for field in custom_fields if field.get('variable_name') == 'tag_id'), None)
-
             customer = data.get('customer', {})
             email = customer.get('email')
 
         if not tag_id:
-            logging.warning(f"tag_id not found : {tag_id}")
+            logging.warning("tag_id not found")
             return
 
         # Ensure tag_id is a string
         tag_id = str(tag_id)
         logging.info(f"tag_id found: {tag_id}")
 
-        # Extract customer and email from data
-
-        async def async_process():
-            # Find the item in the items collection
-            item = await items_collection.find_one({'tag_id': tag_id})
-
-            if item:
-                update_fields = {}
-                email = customer.get('email')
-
-                # Process based on event type
-                if event_type == 'charge.success':
-                    # Determine subscription status and tier
-                    if 'plan' in data and data['plan']:
-                        update_fields['subscription_status'] = 'active'
-                        update_fields['tier'] = data['plan'].get('name', item.get('tier', ''))
-                        update_fields["subscription_code"] = await get_subscription_code(email)
-                    else:
-                        update_fields['subscription_status'] = 'one-time'
-                        amount = data.get('amount', 0) / 100
-                        update_fields['tier'] = 'Basic' if amount == 250 else 'Premium' if amount == 1000 else 'Standard' if amount == 300 else "Passport" if amount == 1500 else "super standard"
-
-                    # Update the email address if available
-                    if email:
-                        update_fields['email_address'] = email
-                    else:
-                        email = item.get('email_address')  # Retrieve from item if not in customer
-                elif event_type == "subscription.not_renew":
-                    logging.info("sub canceled elif tirggered")
-                    print("starting elfi")
-                    # Handle subscription non-renewal
-                    next_payment_date_str = data.get('next_payment_date')
-                    if next_payment_date_str:
-                        # Parse the next_payment_date from string to datetime
-                        subscription_end = datetime.strptime(next_payment_date_str, "%Y-%m-%dT%H:%M:%S.%fZ")
-                        update_fields['subscription_end'] = subscription_end
-
-                    else:
-                        logging.warning("next_payment_date not found in data")
-                        # If next_payment_date is not available, you might want to set a default
-                        subscription_end = datetime.now()  # Default to now
-                        update_fields['subscription_end'] = subscription_end
-
-                elif event_type == 'subscription.disable':
-                    # Handle subscription cancellation immediately
-                    update_fields['subscription_status'] = 'cancelled'
-                    update_fields['subscription_end'] = datetime.now()
-
-                else:
-                    logging.info(f"Unhandled event type: {event_type}")
-                    return
-
-                # Update the item in the items collection
-                await items_collection.update_one({'_id': item['_id']}, {'$set': update_fields})
-
-                # Fetch the updated item
-                updated_item = await items_collection.find_one({'_id': item['_id']})
-
-                if '_id' in updated_item:
-                    del updated_item['_id']
-
-                uuid = item.get('uuid')
-                logging.info(f"uuid found: {uuid}")
-                if uuid:
-                    # Find the user in the users collection
-                    user = await users_collection.find_one({'uuid': uuid})
-                    if user:
-                        user_items = user.get('items', {})
-                        user_items = {str(k): v for k, v in user_items.items()}
-
-                        if tag_id in user_items:
-                            result = await users_collection.update_one(
-                                {'_id': user['_id']},
-                                {'$set': {f'items.{tag_id}': updated_item}}
-                            )
-                            logging.info(f"Updated user item for tag {tag_id} to match items collection.")
-                        else:
-                            logging.warning(f"Tag {tag_id} not found in user's items.")
-                    else:
-                        logging.warning(f"User with uuid {uuid} not found.")
-
-                # Ensure email is available before proceeding
-                if email:
-                    cleaned_email = clean_email(email)
-                    logging.info(f"Cleaned email: {cleaned_email}")
-
-                    # Add email sending task to background tasks
-                    background_tasks.add_task(send_email_webhook, cleaned_email)
-                else:
-                    logging.warning("No email found for this transaction.")
-
-        await async_process()
+        await async_process(event_type, tag_id, email, data, background_tasks)
 
     except Exception as e:
         logging.error(f"Error processing Paystack event: {str(e)}")
 
+
+async def async_process(event_type, tag_id, email, data, background_tasks):
+    try:
+        # Find the item in the items collection
+        item = await items_collection.find_one({'tag_id': tag_id})
+
+        if item:
+            update_fields = {}
+
+            # Process based on event type
+            if event_type == 'charge.success':
+                if 'plan' in data and data['plan']:
+                    update_fields['subscription_status'] = 'active'
+                    update_fields['tier'] = data['plan'].get('name', item.get('tier', ''))
+                    update_fields["subscription_code"] = await get_subscription_code(email)
+                else:
+                    update_fields['subscription_status'] = 'one-time'
+                    amount = data.get('amount', 0) / 100
+                    update_fields['tier'] = (
+                        'Basic' if amount == 250 else
+                        'Premium' if amount == 1000 else
+                        'Standard' if amount == 300 else
+                        "Passport" if amount == 1500 else
+                        "super standard"
+                    )
+
+                if email:
+                    update_fields['email_address'] = email
+                else:
+                    email = item.get('email_address')  # Retrieve from item if not in customer
+
+            elif event_type == "subscription.not_renew":
+                logging.info("Subscription not renewed")
+                next_payment_date_str = data.get('next_payment_date')
+                if next_payment_date_str:
+                    # Parse the next_payment_date from string to datetime
+                    subscription_end = datetime.strptime(next_payment_date_str, "%Y-%m-%dT%H:%M:%S.%fZ")
+                    update_fields['subscription_end'] = subscription_end
+                else:
+                    logging.warning("next_payment_date not found in data")
+                    update_fields['subscription_end'] = datetime.now()  # Default to now
+
+            elif event_type == 'subscription.disable':
+                update_fields['subscription_status'] = 'cancelled'
+                update_fields['subscription_end'] = datetime.now()
+
+            else:
+                logging.info(f"Unhandled event type: {event_type}")
+                return
+
+            # Update the item in the items collection
+            await items_collection.update_one({'_id': item['_id']}, {'$set': update_fields})
+
+            # Fetch the updated item
+            updated_item = await items_collection.find_one({'_id': item['_id']})
+            if '_id' in updated_item:
+                del updated_item['_id']
+
+            uuid = item.get('uuid')
+            logging.info(f"uuid found: {uuid}")
+            if uuid:
+                # Find the user in the users collection
+                user = await users_collection.find_one({'uuid': uuid})
+                if user:
+                    user_items = user.get('items', {})
+                    user_items = {str(k): v for k, v in user_items.items()}
+
+                    if tag_id in user_items:
+                        await users_collection.update_one(
+                            {'_id': user['_id']},
+                            {'$set': {f'items.{tag_id}': updated_item}}
+                        )
+                        logging.info(f"Updated user item for tag {tag_id} to match items collection.")
+                    else:
+                        logging.warning(f"Tag {tag_id} not found in user's items.")
+                else:
+                    logging.warning(f"User with uuid {uuid} not found.")
+
+            # Ensure email is available before proceeding
+            if email:
+                cleaned_email = clean_email(email)
+                logging.info(f"Cleaned email: {cleaned_email}")
+
+                # Add email sending task to background tasks
+                background_tasks.add_task(send_email_webhook, cleaned_email)
+            else:
+                logging.warning("No email found for this transaction.")
+    except Exception as e:
+        logging.error(f"Error inside async_process: {str(e)}")
 
 async def generate_code():
     return str(random.randint(1000000000, 9999999999))  # Generate 10-digit code
