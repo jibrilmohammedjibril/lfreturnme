@@ -826,7 +826,7 @@ async def save_access_code(uuid: str):
     return new_code
 
 
-async def update_expired_subscriptions():
+async def update_expired_subscriptions(items_collection, users_collection):
     current_date = datetime.now()
 
     # Find items with expired subscriptions
@@ -837,7 +837,7 @@ async def update_expired_subscriptions():
         item_id = item['item_id']
         tag_id = item['tag_id']
         user_uuid = item['uuid']
-
+        logging.info(f"modifying {user_uuid} and tag {tag_id}")
         # Update the item's subscription status to inactive in the items collection
         await items_collection.update_one({"item_id": item_id}, {"$set": {"subscription_status": "inactive"}})
 
@@ -846,24 +846,3 @@ async def update_expired_subscriptions():
             {"uuid": user_uuid, "items.tag_id": tag_id},
             {"$set": {"items.$.status": "inactive"}}
         )
-
-
-# Schedule the task to run immediately
-async def scheduled_task():
-    await update_expired_subscriptions()
-
-
-# Create a function to handle scheduling
-def schedule_task():
-    asyncio.create_task(scheduled_task())
-
-
-# Run the task immediately after the code is executed
-schedule_task()
-
-# Schedule the task to run every day at a specified time
-schedule.every().day.at("00:00").do(schedule_task)
-
-while True:
-    schedule.run_pending()
-    time.sleep(60)

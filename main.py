@@ -16,6 +16,8 @@ import logging
 import time
 from fastapi import FastAPI, Request, HTTPException
 import json
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
+from crud import update_expired_subscriptions  # Import the function from crud.py
 
 app = FastAPI()
 app.add_middleware(
@@ -25,13 +27,39 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+scheduler = AsyncIOScheduler()
 
 logging.basicConfig(level=logging.INFO)
+
+
+async def scheduled_task():
+    await update_expired_subscriptions(crud.items_collection, crud.users_collection)
+
+
+# Schedule the task to run every day at midnight
+#scheduler.add_job(scheduled_task, 'cron', hour=0, minute=0)
+scheduler.add_job(scheduled_task, 'interval', minutes=2)
+
+
+@app.on_event("startup")
+async def startup_event():
+    scheduler.start()
+
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    scheduler.shutdown()
 
 
 @app.get("/")
 async def root():
     return {"message": "Welcome to LFReturnMe API"}
+
+
+@app.get("/schedule-task")
+async def run_task(background_tasks: BackgroundTasks):
+    background_tasks.add_task(scheduled_task)
+    return {"message": "Task scheduled"}
 
 
 @app.post("/signup/", response_model=schemas.ResponseSignup)
@@ -201,7 +229,6 @@ async def update_item_status(
         tagid: str = Query(..., title="Tag ID / Item ID to find"),
         new_status: str = Query(..., title="New status (integer) to update")
 ):
-
     if new_status == "1":
         user = await crud.find_user_by_uuid(uuid)
         item = await crud.find_item_by_tag_id(tagid)
@@ -583,7 +610,6 @@ async def paystack_webhook(request: Request, background_tasks: BackgroundTasks):
         # Get the raw request body
         payload = await request.body()
         logging.info(payload)
-
 
         # Log the payload for debugging
         logging.debug(f"Received payload: {payload.decode('utf-8')}")
