@@ -25,7 +25,6 @@ import schedule
 import time
 from dateutil import parser
 
-
 load_dotenv()
 
 logger = logging.getLogger(__name__)
@@ -707,8 +706,6 @@ async def process_paystack_event(data: dict, event_type: str, background_tasks: 
         logging.error(f"Error processing Paystack event: {str(e)}")
 
 
-
-
 async def async_process(event_type, tag_id, email, data, background_tasks):
     try:
         # Find the item in the items collection
@@ -723,7 +720,6 @@ async def async_process(event_type, tag_id, email, data, background_tasks):
                     update_fields['subscription_status'] = 'active'
                     update_fields['tier'] = data['plan'].get('name', item.get('tier', ''))
                     update_fields["subscription_code"] = await get_subscription_code(email)
-
                 else:
                     update_fields['subscription_status'] = 'one-time'
                     amount = data.get('amount', 0) / 100
@@ -731,34 +727,45 @@ async def async_process(event_type, tag_id, email, data, background_tasks):
                         'Basic' if amount == 250 else
                         'Premium' if amount == 1000 else
                         'Standard' if amount == 300 else
-                        "Passport" if amount == 1500 else
-                        "Custom"
+                        'Passport' if amount == 1500 else
+                        'Custom'
                     )
+
+                # Set subscription_end to 30 days
+                update_fields['subscription_end'] = 30
 
                 if email:
                     update_fields['email_address'] = email
                 else:
-                    email = item.get('email_address')  # Retrieve from item if not in customer
+                    email = item.get('email_address')  # Retrieve from item if not provided
 
             elif event_type == "subscription.not_renew":
                 logging.info("Subscription not renewed")
                 next_payment_date_str = data.get('next_payment_date')
                 if next_payment_date_str:
                     # Parse the next_payment_date from string to datetime
-                    subscription_end = parser.parse(next_payment_date_str).date()
-                    update_fields['subscription_end'] = subscription_end
+                    next_payment_date = parser.parse(next_payment_date_str).date()
+                    today = datetime.now().date()
+                    days_remaining = (next_payment_date - today).days
+                    days_remaining = max(days_remaining, 0)  # Ensure non-negative
+                    update_fields['subscription_end'] = days_remaining
                 else:
                     logging.warning("next_payment_date not found in data")
-                    update_fields['subscription_end'] = datetime.now()  # Default to now
+                    update_fields['subscription_end'] = 0  # Default to 0 days remaining
+
+                if not email:
+                    email = item.get('email_address')
 
             elif event_type == 'subscription.disable':
                 update_fields['subscription_status'] = 'cancelled'
-                update_fields['subscription_end'] = datetime.now()
+                update_fields['subscription_end'] = 0  # No days remaining
+
+                if not email:
+                    email = item.get('email_address')
 
             else:
                 logging.info(f"Unhandled event type: {event_type}")
                 return
-
 
             # Update the item in the items collection
             await items_collection.update_one({'_id': item['_id']}, {'$set': update_fields})
@@ -767,6 +774,8 @@ async def async_process(event_type, tag_id, email, data, background_tasks):
             updated_item = await items_collection.find_one({'_id': item['_id']})
             if '_id' in updated_item:
                 del updated_item['_id']
+
+            logging.info(f"Updated item: {updated_item}")
 
             uuid = item.get('uuid')
             logging.info(f"uuid found: {uuid}")
@@ -798,12 +807,8 @@ async def async_process(event_type, tag_id, email, data, background_tasks):
             else:
                 logging.warning("No email found for this transaction.")
 
-        # Example of filtering items by a date field
-        # Filter items whose subscription_end date is greater than or equal to today
-        # filter_date = datetime.now()
-        # filtered_items = items_collection.find({'subscription_end': {'$gte': filter_date}})
-        # async for filtered_item in filtered_items:
-        #     logging.info(f"Filtered item: {filtered_item}")
+        else:
+            logging.warning(f"No item found with tag_id: {tag_id}")
 
     except Exception as e:
         logging.error(f"Error inside async_process: {str(e)}")
