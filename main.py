@@ -38,7 +38,7 @@ async def scheduled_task():
 
 # Schedule the task to run every day at midnight
 #scheduler.add_job(scheduled_task, 'cron', hour=0, minute=0)
-scheduler.add_job(scheduled_task, 'interval', minutes=2)
+scheduler.add_job(scheduled_task, 'interval', minutes=1)
 
 
 @app.on_event("startup")
@@ -65,7 +65,7 @@ async def run_task(background_tasks: BackgroundTasks):
 @app.post("/signup/", response_model=schemas.ResponseSignup)
 async def signup(
         full_name: str = Form(...),
-        email_address: str = Form(...),
+        email_address_: str = Form(...),
         date_of_birth: str = Form(...),
         address: str = Form(...),
         phone_number: str = Form(...),
@@ -76,6 +76,7 @@ async def signup(
 ):
     try:
         date_of_birth_obj = datetime.strptime(date_of_birth, "%Y-%m-%d").date()
+        email_address = email_address_.lower()
 
         # Upload files to Firebase
         profile_picture_url = upload_to_firebase(profile_picture)
@@ -188,7 +189,8 @@ async def forgot_password(request: schemas.ForgotPasswordRequest):
 @app.post("/reset-password/")
 async def reset_password(request: schemas.ResetPasswordRequest):
     try:
-        email_address = await crud.validate_reset_token(request.token)
+        email_address_ = await crud.validate_reset_token(request.token)
+        email_address = email_address_.lower()
         if email_address:
             success = await crud.update_password(email_address, request.new_password)
             if success:

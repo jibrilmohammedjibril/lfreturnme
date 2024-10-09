@@ -740,8 +740,8 @@ async def async_process(event_type, tag_id, email, data, background_tasks):
                 next_payment_date_str = data.get('next_payment_date')
                 if next_payment_date_str:
                     # Parse the next_payment_date from string to datetime
-                    subscription_end = datetime.strptime(next_payment_date_str, "%Y-%m-%dT%H:%M:%S.%fZ")
-                    update_fields['subscription_end'] = subscription_end.strftime("%Y-%m-%d")
+                    subscription_end = datetime.strptime(next_payment_date_str, "%Y-%m-%d")
+                    update_fields['subscription_end'] = subscription_end
                 else:
                     logging.warning("next_payment_date not found in data")
                     update_fields['subscription_end'] = datetime.now()  # Default to now
@@ -832,7 +832,7 @@ async def update_expired_subscriptions(items_collection, users_collection):
     # Find items with expired subscriptions
     expired_items = await items_collection.find(
         {"subscription_end": {"$lt": current_date}, "subscription_status": "active"}).to_list(length=None)
-
+    print(expired_items)
     for item in expired_items:
         item_id = item['item_id']
         tag_id = item['tag_id']
