@@ -744,7 +744,7 @@ async def async_process(event_type, tag_id, email, data, background_tasks):
                 if next_payment_date_str:
                     # Parse the next_payment_date from string to datetime
                     subscription_end = datetime.strptime(next_payment_date_str, "%Y-%m-%dT%H:%M:%S.%fZ")
-                    update_fields['subscription_end'] = subscription_end
+                    update_fields['subscription_end'] = subscription_end.strftime("%Y-%m-%d")
                 else:
                     logging.warning("next_payment_date not found in data")
                     update_fields['subscription_end'] = datetime.now()  # Default to now
