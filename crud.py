@@ -848,17 +848,21 @@ async def update_expired_subscriptions():
         )
 
 
-# Create a synchronous wrapper to call the async function
-def scheduled_task():
-    asyncio.run(update_expired_subscriptions())
+# Schedule the task to run immediately
+async def scheduled_task():
+    await update_expired_subscriptions()
+
+
+# Create a function to handle scheduling
+def schedule_task():
+    asyncio.create_task(scheduled_task())
 
 
 # Run the task immediately after the code is executed
-scheduled_task()
-
+schedule_task()
 
 # Schedule the task to run every day at a specified time
-schedule.every().day.at("00:00").do(scheduled_task)
+schedule.every().day.at("00:00").do(schedule_task)
 
 while True:
     schedule.run_pending()
