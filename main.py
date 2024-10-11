@@ -189,8 +189,8 @@ async def forgot_password(request: schemas.ForgotPasswordRequest):
 @app.post("/reset-password/")
 async def reset_password(request: schemas.ResetPasswordRequest):
     try:
-        email_address_ = await crud.validate_reset_token(request.token)
-        email_address = email_address_.lower()
+        email_address = await crud.validate_reset_token(request.token)
+        email_address = email_address.lower()
         if email_address:
             success = await crud.update_password(email_address, request.new_password)
             if success:
@@ -297,6 +297,7 @@ async def add_lost_item(
     date_string = now.strftime("%Y-%m-%d")
     registered_date_obj = datetime.strptime(date_string, "%Y-%m-%d").date()
     registered_date_str = registered_date_obj.strftime("%Y-%m-%d")
+    email = email.lower()
 
     lost = LostFound(
         item=item,
@@ -393,6 +394,7 @@ async def add_found_item(
     date_string = now.strftime("%Y-%m-%d")
     registered_date_obj = datetime.strptime(date_string, "%Y-%m-%d").date()
     registered_date_str = registered_date_obj.strftime("%Y-%m-%d")
+    email = email.lower()
 
     found = LostFound(
         item=item,
@@ -506,6 +508,7 @@ async def update_profile(
 
     # Extract current profile picture URL if it exists
     current_picture_url = user.get("profile_picture")
+    email_address = email_address.lower()
 
     # Handle the profile picture upload if provided
     profile_picture_url = upload_to_firebase(profile_picture) if profile_picture else current_picture_url
