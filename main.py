@@ -17,7 +17,7 @@ import time
 from fastapi import FastAPI, Request, HTTPException
 import json
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
-from crud import update_expired_subscriptions  # Import the function from crud.py
+from crud import update_subscriptions_daily  # Import the function from crud.py
 
 app = FastAPI()
 app.add_middleware(
@@ -33,7 +33,7 @@ logging.basicConfig(level=logging.INFO)
 
 
 async def scheduled_task():
-    await crud.update_subscriptions_daily(crud.items_collection, crud.users_collection)
+    await update_subscriptions_daily(crud.items_collection, crud.users_collection)
 
 
 # Schedule the task to run every day at midnight
