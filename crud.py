@@ -24,6 +24,7 @@ import hashlib
 import schedule
 import time
 from dateutil import parser
+from pymongo import UpdateOne
 
 load_dotenv()
 
@@ -845,23 +846,56 @@ async def save_access_code(uuid: str):
     return new_code
 
 
-async def update_expired_subscriptions(items_collection, users_collection):
-    current_date = datetime.now()
-
-    # Find items with expired subscriptions
-    expired_items = await items_collection.find(
-        {"subscription_end": {"$lt": current_date}, "subscription_status": "active"}).to_list(length=None)
-    print(expired_items)
-    for item in expired_items:
-        item_id = item['item_id']
-        tag_id = item['tag_id']
-        user_uuid = item['uuid']
-        logging.info(f"modifying {user_uuid} and tag {tag_id}")
-        # Update the item's subscription status to inactive in the items collection
-        await items_collection.update_one({"item_id": item_id}, {"$set": {"subscription_status": "inactive"}})
-
-        # Update the corresponding item status to inactive in the user's collection
-        await users_collection.update_one(
-            {"uuid": user_uuid, "items.tag_id": tag_id},
-            {"$set": {"items.$.status": "inactive"}}
+async def update_subscriptions_daily(items_collection, users_collection):
+    try:
+        # Decrement 'subscription_end' by 1 for all items in items_collection
+        await items_collection.update_many(
+            {},
+            {'$inc': {'subscription_end': -1}}
         )
+
+        # Set 'subscription_status' to 'inactive' where 'subscription_end' <= 0 in items_collection
+        await items_collection.update_many(
+            {'subscription_end': {'$lte': 0}},
+            {'$set': {'subscription_status': 'inactive'}}
+        )
+
+        # Fetch all users with items to update their subscriptions
+        users = await users_collection.find({"items": {"$exists": True}}).to_list(length=None)
+
+        for user in users:
+            uuid = user.get('uuid')
+            user_items = user.get('items', {})
+
+            if not user_items:
+                continue
+
+            user_update_operations = []
+
+            for tag_id, user_item in user_items.items():
+                subscription_end = user_item.get('subscription_end', 0)
+                subscription_status = user_item.get('subscription_status', 'inactive')
+
+                # Decrease subscription_end by 1
+                new_subscription_end = subscription_end - 1
+
+                update_fields = {
+                    f'items.{tag_id}.subscription_end': new_subscription_end
+                }
+
+                # If subscription_end <= 0, set subscription_status to 'inactive'
+                if new_subscription_end <= 0:
+                    update_fields[f'items.{tag_id}.subscription_status'] = 'inactive'
+
+                # Prepare the update operation
+                user_update_operations.append(UpdateOne(
+                    {'_id': user['_id']},
+                    {'$set': update_fields}
+                ))
+
+            # Execute bulk update for the user if there are updates
+            if user_update_operations:
+                await users_collection.bulk_write(user_update_operations)
+
+    except Exception as e:
+        logging.error(f"Error in update_subscriptions_daily: {str(e)}")

@@ -33,7 +33,7 @@ logging.basicConfig(level=logging.INFO)
 
 
 async def scheduled_task():
-    await update_expired_subscriptions(crud.items_collection, crud.users_collection)
+    await crud.update_subscriptions_daily(crud.items_collection, crud.users_collection)
 
 
 # Schedule the task to run every day at midnight
