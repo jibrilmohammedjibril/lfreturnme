@@ -175,7 +175,7 @@ async def register_item(
 @app.post("/forgot-password/")
 async def forgot_password(request: schemas.ForgotPasswordRequest):
     try:
-        token = await crud.create_reset_token(request.email_address)
+        token = await crud.create_reset_token(request.email_address.lower())
         if token:
             reset_link = f"https://lfreturnme.com/reset-password/{token}. Link  expires after 5 minutes"
             send_email_reset(request.email_address, reset_link)
