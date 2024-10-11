@@ -65,7 +65,7 @@ async def run_task(background_tasks: BackgroundTasks):
 @app.post("/signup/", response_model=schemas.ResponseSignup)
 async def signup(
         full_name: str = Form(...),
-        email_address_: str = Form(...),
+        email_address: str = Form(...),
         date_of_birth: str = Form(...),
         address: str = Form(...),
         phone_number: str = Form(...),
@@ -76,7 +76,7 @@ async def signup(
 ):
     try:
         date_of_birth_obj = datetime.strptime(date_of_birth, "%Y-%m-%d").date()
-        email_address = email_address_.lower()
+        email_address = email_address.lower()
 
         # Upload files to Firebase
         profile_picture_url = upload_to_firebase(profile_picture)
