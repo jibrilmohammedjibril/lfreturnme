@@ -20,9 +20,14 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from crud import update_subscriptions_daily  # Import the function from crud.py
 
 app = FastAPI()
+
+origins = [
+    "https://www.lfreturnme.com",
+    "https://api.paystack.co",
+]
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -37,8 +42,10 @@ async def scheduled_task():
 
 
 # Schedule the task to run every day at midnight
-#scheduler.add_job(scheduled_task, 'cron', hour=0, minute=0)
-scheduler.add_job(scheduled_task, 'interval', minutes=1)
+scheduler.add_job(scheduled_task, 'cron', hour=0, minute=0)
+
+
+#scheduler.add_job(scheduled_task, 'interval', minutes=1)
 
 
 @app.on_event("startup")
@@ -49,6 +56,22 @@ async def startup_event():
 @app.on_event("shutdown")
 async def shutdown_event():
     scheduler.shutdown()
+
+
+@app.middleware("http")
+async def restrict_access(request: Request, call_next):
+    # Get the referrer header
+    referer = request.headers.get("referer")
+
+    # Allow requests only from your frontend domain and Paystack
+    if referer:
+        if not any(domain in referer for domain in ["your-frontend-domain.com", "paystack.co"]):
+            raise HTTPException(status_code=403, detail="Access forbidden")
+    else:
+        raise HTTPException(status_code=403, detail="Access forbidden")
+
+    response = await call_next(request)
+    return response
 
 
 @app.get("/")
@@ -64,6 +87,7 @@ async def run_task(background_tasks: BackgroundTasks):
 
 @app.post("/signup/", response_model=schemas.ResponseSignup)
 async def signup(
+        background_tasks: BackgroundTasks,
         full_name: str = Form(...),
         email_address: str = Form(...),
         date_of_birth: str = Form(...),
@@ -79,7 +103,7 @@ async def signup(
         email_address = email_address.lower()
 
         # Upload files to Firebase
-        profile_picture_url = upload_to_firebase(profile_picture)
+        profile_picture_url = upload_to_firebase(profile_picture, "profile_picture")
         #id_card_image_url = upload_to_firebase(id_card_image)
 
         user = schemas.Signup(
@@ -99,7 +123,87 @@ async def signup(
         )
 
         db_user = await crud.create_user(user=user)
+        body = f"""
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Welcome to LFReturnMe</title>
+        <style>
+            body {{
+                font-family: Arial, sans-serif;
+                background-color: #f4f4f4;
+                margin: 0;
+                padding: 0;
+            }}
+            .container {{
+                max-width: 600px;
+                margin: 20px auto;
+                background-color: #ffffff;
+                padding: 20px;
+                border-radius: 10px;
+                box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+            }}
+            .header {{
+                background-color: #ff6600;
+                padding: 10px 20px;
+                border-radius: 10px 10px 0 0;
+                text-align: center;
+                color: #ffffff;
+            }}
+            h1 {{
+                margin: 0;
+                font-size: 24px;
+            }}
+            .content {{
+                padding: 20px;
+                color: #333333;
+            }}
+            p {{
+                line-height: 1.6;
+            }}
+            a.button {{
+                display: inline-block;
+                padding: 10px 20px;
+                margin: 20px 0;
+                background-color: #ff6600;
+                color: #ffffff;
+                text-decoration: none;
+                border-radius: 5px;
+                font-size: 16px;
+            }}
+            .footer {{
+                margin-top: 20px;
+                text-align: center;
+                color: #888888;
+                font-size: 12px;
+            }}
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <div class="content">
+                <p>Dear {user.full_name},</p>
+                <p>Welcome to LFReturnMe – your first step towards safeguarding your valuables and joining our growing community of Finders!</p>
+                <p>We’re thrilled to have you on board. Here’s a quick rundown of what you can expect from your experience with us:</p>
+                <ul>
+                    <li><strong>Peace of Mind:</strong> With our innovative tagging system, your valuable items can always find their way back to you if lost.</li>
+                    <li><strong>Finders Community:</strong> You are now part of a network that helps people recover their lost belongings. Earn rewards when you help others!</li>
+                    <li><strong>Quick Setup:</strong> You can start registering your valuable items right away! Simply log in to your account and add details about the items you want to protect.</li>
+                </ul>
+                <p>Explore the full benefits of your plan and get the most out of your LFReturnMe experience by visiting your dashboard today.</p>
+                <a href="www.lfreturnme.com/signin" class="button">Log in to your account</a>
+                <p>If you have any questions or need support, we’re always here for you. Reach out to our team.</p>
+                <p>Thank you for trusting LFReturnMe to keep you connected with your valuables.</p>
+            </div>
+            </div>
+        </div>
+    </body>
+    </html>
+    """
         if db_user:
+            background_tasks.add_task(crud.send_email, user.email_address, "Welcome to LFReturnMe", body)
             return db_user
         else:
             raise HTTPException(status_code=400, detail="Email address already exists")
@@ -140,7 +244,7 @@ async def register_item(
         raise HTTPException(status_code=400, detail="This tag is already owned")
 
     # Upload image to Firebase
-    image_url = upload_to_firebase(item_image)
+    image_url = upload_to_firebase(item_image, "item_images")
 
     now = datetime.now()
     date_string = now.strftime("%Y-%m-%d")
@@ -277,6 +381,7 @@ lf_email = "info@lfreturnme.com"
 
 @app.post("/lost/")
 async def add_lost_item(
+        background_tasks: BackgroundTasks,
         item: str = Form(...),
         name: str = Form(...),
         location: str = Form(...),
@@ -289,7 +394,7 @@ async def add_lost_item(
     start_time = time.time()
     image_url = ""
     if item_image is not None:
-        image_url = upload_to_firebase(item_image)
+        image_url = upload_to_firebase(item_image, "lost_items")
 
     logging.info(f"Time taken for file upload: {time.time() - start_time} seconds")
 
@@ -316,9 +421,8 @@ async def add_lost_item(
         await crud.add_to_lost(lost)
         # send mail to the person that lost it
         logging.info(f"Time taken for adding to lost collection: {time.time() - start_time} seconds")
-        send_email(lost.email,
-                   "We've Received Your Lost Item Report",
-                   f"""
+
+        body = f"""
                        <h2>Dear {lost.name},</h2>
 
                        <p>Thank you for trusting LFReturnMe to help you recover your lost <strong>{lost.description}</strong>. Our Finders Community is now on alert, and we will do our best to assist you in locating your item.</p>
@@ -333,24 +437,22 @@ async def add_lost_item(
                        <p><strong>Need extra help?</strong> If you’d like to benefit from additional recovery services, feel free to explore our subscription plans <a href="[link to plans]">here</a>, which offer enhanced recovery support, priority notifications, and more.</p>
 
                        <p>For any questions or assistance, don’t hesitate to contact us at [support email or phone number].</p>
-                   """)
-        # Send email to lfreturme
-        send_email(lf_email, "reported  Lost item",
-                   f"item {lost.item} has been reported lost at {lost.location}, this item is not registered and the person that lost is {lost.name}")
+                   """
+        background_tasks.add_task(send_email, lost.email, "We've Received Your Lost Item Report", body)
 
-        logging.info(f"Time taken for sending emails: {time.time() - start_time} seconds")
+        # Send email to lfreturme
+        background_tasks.add_task(send_email, lf_email, "reported  Lost item",
+                                  f"item {lost.item} has been reported lost at {lost.location}, this item is not registered and the person that lost is {lost.name}")
 
         return JSONResponse(status_code=200, content={"message": "Item added to lostfound and email sent"})
     else:
         # Search items collection by tag_id
         item = await crud.find_item_by_tag_id(lost.tag_id)
-        logging.info(f"Time taken for finding item by tag_id: {time.time() - start_time} seconds")
         if item is None:
             raise HTTPException(status_code=404, detail="Item not found")
 
         # Retrieve user information by uuid
         user = await crud.find_user_by_uuid(item.uuid)
-        logging.info(f"Time taken for finding user by uuid: {time.time() - start_time} seconds")
         if user is None:
             raise HTTPException(status_code=404, detail="User not found")
 
@@ -358,17 +460,11 @@ async def add_lost_item(
 
         await crud.update_item_status_full(item.uuid, lost.tag_id, "1", crud.users_collection,
                                            crud.items_collection)
-        logging.info(f"Time taken for updating item status: {time.time() - start_time} seconds")
         await crud.add_to_lost(lost)
-        logging.info(f"Time taken for adding to lost collection: {time.time() - start_time} seconds")
         # Send email to user
-        send_email(user["email_address"], "Item Lost",
-                   f"You have reported {item.item_name} lost.")
-        # send email to lfreturnme
 
-        send_email(lf_email, "Item Lost",
-                   f" registered item '{item.item_name}' has been reported lost.tit is registered")
-        logging.info(f"Time taken for sending email to user: {time.time() - start_time} seconds")
+        background_tasks.add_task(send_email, lf_email, "Item Lost",
+                                  f" registered item '{item.item_name}' has been reported lost.tit is registered")
 
         return JSONResponse(status_code=200, content={"message": "Item status updated and email sent to user"})
 
@@ -387,7 +483,7 @@ async def add_found_item(
 ):
     start_time = time.time()
     if item_image is not None:
-        image_url = upload_to_firebase(item_image)
+        image_url = upload_to_firebase(item_image, "found_items")
     else:
         image_url = ""
     now = datetime.now()
@@ -511,7 +607,8 @@ async def update_profile(
     email_address = email_address.lower()
 
     # Handle the profile picture upload if provided
-    profile_picture_url = upload_to_firebase(profile_picture) if profile_picture else current_picture_url
+    profile_picture_url = upload_to_firebase(profile_picture,
+                                             "profile_picture") if profile_picture else current_picture_url
 
     # Create the update data dictionary
     update_data = {

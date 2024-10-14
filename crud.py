@@ -1,7 +1,5 @@
-import asyncio
 import base64
 import json
-import os
 import re
 import random
 import httpx
@@ -21,10 +19,13 @@ from pymongo import ReturnDocument
 from dotenv import load_dotenv
 import hmac
 import hashlib
-import schedule
-import time
 from dateutil import parser
 from pymongo import UpdateOne
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
+import smtplib
+import os
+
 
 load_dotenv()
 
@@ -175,13 +176,20 @@ async def update_user_items(uuid: str, item: ItemRegistration) -> bool:
     return False
 
 
-def upload_to_firebase(file: UploadFile) -> str:
+def upload_to_firebase(file: UploadFile, folder_name: str) -> str:
     bucket = storage.bucket()
-    blob = bucket.blob(f"{uuid.uuid4()}-{file.filename}")
-    blob.upload_from_string(file.file.read(), content_type=file.content_type)
-    blob.make_public()
-    return blob.public_url
 
+    # Generate the file path by prepending the folder name to the file name
+    blob = bucket.blob(f"{folder_name}/{uuid.uuid4()}-{file.filename}")
+
+    # Upload the file to the specified folder in Firebase
+    blob.upload_from_string(file.file.read(), content_type=file.content_type)
+
+    # Make the file publicly accessible
+    blob.make_public()
+
+    # Return the public URL of the uploaded file
+    return blob.public_url
 
 from urllib.parse import unquote
 
@@ -382,17 +390,13 @@ def send_email_otp(receiver_email: str, otp: int):
         raise HTTPException(status_code=500, detail="Failed to send OTP email")
 
 
-from email.mime.multipart import MIMEMultipart
-from email.mime.text import MIMEText
-import smtplib
-import os
 
 
 def send_email(to_email: str, subject: str, body_content: str):
     # Create a multipart email (text and HTML)
     msg = MIMEMultipart("alternative")
     msg["Subject"] = subject
-    msg["From"] = 'lostfound_no_reply@lfreturnme.com'
+    msg["From"] = 'no_reply@lfreturnme.com'
     msg["To"] = to_email
 
     # Define the plain text version of the email content
@@ -848,13 +852,13 @@ async def save_access_code(uuid: str):
 
 async def update_subscriptions_daily(items_collection, users_collection):
     try:
-        # Decrement 'subscription_end' by 1 for all items in items_collection
+        # Decrement 'subscription_end' by 1 for all items where 'subscription_end' is greater than 0
         await items_collection.update_many(
-            {},
+            {'subscription_end': {'$gt': 0}},
             {'$inc': {'subscription_end': -1}}
         )
 
-        # Set 'subscription_status' to 'inactive' where 'subscription_end' <= 0 in items_collection
+        # Set 'subscription_status' to 'inactive' where 'subscription_end' <= 0
         await items_collection.update_many(
             {'subscription_end': {'$lte': 0}},
             {'$set': {'subscription_status': 'inactive'}}
@@ -876,8 +880,11 @@ async def update_subscriptions_daily(items_collection, users_collection):
                 subscription_end = user_item.get('subscription_end', 0)
                 subscription_status = user_item.get('subscription_status', 'inactive')
 
-                # Decrease subscription_end by 1
-                new_subscription_end = subscription_end - 1
+                # Only decrement if subscription_end is greater than 0
+                if subscription_end > 0:
+                    new_subscription_end = subscription_end - 1
+                else:
+                    new_subscription_end = 0  # Ensure subscription_end doesn't go below 0
 
                 update_fields = {
                     f'items.{tag_id}.subscription_end': new_subscription_end
