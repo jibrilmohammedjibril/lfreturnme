@@ -58,20 +58,6 @@ async def shutdown_event():
     scheduler.shutdown()
 
 
-@app.middleware("http")
-async def restrict_access(request: Request, call_next):
-    # Get the referrer header
-    referer = request.headers.get("referer")
-
-    # Allow requests only from your frontend domain and Paystack
-    if referer:
-        if not any(domain in referer for domain in ["your-frontend-domain.com", "paystack.co"]):
-            raise HTTPException(status_code=403, detail="Access forbidden")
-    else:
-        raise HTTPException(status_code=403, detail="Access forbidden")
-
-    response = await call_next(request)
-    return response
 
 
 @app.get("/")
