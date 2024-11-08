@@ -1,7 +1,5 @@
-import os
-import smtplib
-from email.mime.text import MIMEText
-from typing import Optional
+from typing import Optional, Dict, List
+import requests
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi import Form, UploadFile, File, BackgroundTasks, Request
 from datetime import datetime, timedelta
@@ -20,7 +18,7 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from crud import update_subscriptions_daily  # Import the function from crud.py
 
 app = FastAPI()
-
+#(docs_url=None, redoc_url=None, openapi_url=None
 origins = [
     "https://www.lfreturnme.com",
     "https://api.paystack.co",
@@ -45,9 +43,6 @@ async def scheduled_task():
 scheduler.add_job(scheduled_task, 'cron', hour=0, minute=0)
 
 
-#scheduler.add_job(scheduled_task, 'interval', minutes=1)
-
-
 @app.on_event("startup")
 async def startup_event():
     scheduler.start()
@@ -56,13 +51,6 @@ async def startup_event():
 @app.on_event("shutdown")
 async def shutdown_event():
     scheduler.shutdown()
-
-
-
-
-@app.get("/")
-async def root():
-    return {"message": "Welcome to LFReturnMe API"}
 
 
 @app.get("/schedule-task")
@@ -267,8 +255,8 @@ async def forgot_password(request: schemas.ForgotPasswordRequest):
     try:
         token = await crud.create_reset_token(request.email_address.lower())
         if token:
-            reset_link = f"https://lfreturnme.com/reset-password/{token}. Link  expires after 5 minutes"
-            send_email_reset(request.email_address, reset_link)
+            reset_link = f"https://lfreturnme.com/reset-password/{token}"
+            crud.send_email_reset(request.email_address, reset_link)
             return {"message": "Password reset email sent"}
         else:
             raise HTTPException(status_code=404, detail="Email address not found")
@@ -291,24 +279,6 @@ async def reset_password(request: schemas.ResetPasswordRequest):
             raise HTTPException(status_code=400, detail="Invalid or expired token")
     except Exception as e:
         raise HTTPException(status_code=500, detail="Internal server error")
-
-
-def send_email_reset(to_email: str, reset_link: str):
-    msg = MIMEText(f"Click the link to reset your password: {reset_link}")
-    msg['Subject'] = 'Password Reset Request'
-    msg['From'] = 'no_reply@lfreturnme.com'
-    msg['To'] = to_email
-    sender_email = os.getenv("EMAIL_USER")
-    sender_password = os.getenv("EMAIL_PASS")
-    sender_host = os.getenv("EMAIL_HOST")
-
-    try:
-        with smtplib.SMTP_SSL(sender_host, 465) as server:
-            server.login(sender_email, sender_password)
-            server.sendmail("infonfo@lfreturnme.com", to_email, msg.as_string())
-            print("Email sent successfully!")
-    except Exception as e:
-        print(f"Failed to send email: {e}")
 
 
 # Assuming `client` and `database` are already defined as in your existing code
@@ -349,17 +319,32 @@ async def update_item_status(
     return await crud.update_item_status_full(uuid, tagid, new_status, crud.users_collection, crud.items_collection)
 
 
-@app.post("/email-sub/", response_model=dict)
-async def subscribe_newsletter(newsletter_email: schemas.NewsletterEmail):
+@app.post("/subscribe")
+async def subscribe_email(subscription: schemas.NewsletterEmail):
+    headers = {
+        "accept": "application/json",
+        "api-key": crud.brevo_api,
+        "content-type": "application/json"
+    }
+
+    # The payload to be sent to Brevo's API
+    payload = {
+        "email": subscription.email,
+        "listIds": [5],  # Replace with your Brevo List ID
+        "updateEnabled": True  # This will update the contact if it already exists
+    }
+
     try:
-        success = await crud.add_newsletter_email(newsletter_email.email)
-        if not success:
-            raise HTTPException(status_code=400, detail="Email already subscribed")
-        return {"message": "Email subscribed successfully"}
-    except HTTPException as e:
-        raise e
-    except Exception as e:
-        raise HTTPException(status_code=500, detail="Internal server error")
+        # Sending request to Brevo API to add the contact
+        response = requests.post("https://api.brevo.com/v3/contacts", json=payload, headers=headers)
+        response.raise_for_status()  # Raise an error if the request failed
+        await crud.add_newsletter_email(subscription.email)
+
+        return {"message": "Email successfully subscribed!"}
+
+    except requests.exceptions.RequestException as e:
+        # Handle any errors during the API call
+        raise HTTPException(status_code=400, detail=f"Error subscribing email: {str(e)}")
 
 
 lf_email = "info@lfreturnme.com"
@@ -420,7 +405,7 @@ async def add_lost_item(
                            <li><strong>Spread the Word:</strong> You can increase your chances by sharing the details of your lost item with your friends, family, or social media. We’re also working on expanding our Finders Network to help connect people faster.</li>
                        </ul>
 
-                       <p><strong>Need extra help?</strong> If you’d like to benefit from additional recovery services, feel free to explore our subscription plans <a href="[link to plans]">here</a>, which offer enhanced recovery support, priority notifications, and more.</p>
+                       <p><strong>Need extra help?</strong> If you’d like to benefit from additional recovery services, feel free to explore our subscription plans <a href="www.lfreturnme.com">here</a>, which offer enhanced recovery support, priority notifications, and more.</p>
 
                        <p>For any questions or assistance, don’t hesitate to contact us at [support email or phone number].</p>
                    """
@@ -728,3 +713,24 @@ async def paystack_webhook(request: Request, background_tasks: BackgroundTasks):
     except Exception as e:
         logging.error(f"Error processing webhook: {str(e)}")
         raise HTTPException(status_code=500, detail="Internal Server Error")
+
+
+@app.get("/items/", response_model=List[LostFound])
+async def get_items_by_location(
+        location: str = Query(..., description="Location to filter items by, e.g., 'Abuja'"),
+        page: int = Query(1, ge=1, description="Page number"),
+        page_size: int = Query(10, ge=1, le=100, description="Number of items per page")
+):
+    # Calculate the number of items to skip based on the current page
+    skip = (page - 1) * page_size
+    # Query MongoDB with the specified filters and pagination
+    items_cursor = crud.found_collection.find({"location": location}).skip(skip).limit(page_size)
+    items = list(items_cursor)
+
+    # If no items are found, return a 404 error
+    if not items:
+        raise HTTPException(status_code=404, detail="No items found for the specified location.")
+
+
+    # Convert MongoDB documents to Pydantic models
+    return [LostFound(**item) for item in items]

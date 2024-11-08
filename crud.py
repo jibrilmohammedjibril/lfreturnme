@@ -4,6 +4,7 @@ import re
 import random
 import httpx
 import motor.motor_asyncio
+import requests
 from fastapi import UploadFile, HTTPException, BackgroundTasks
 import schemas
 import uuid
@@ -26,7 +27,6 @@ from email.mime.text import MIMEText
 import smtplib
 import os
 
-
 load_dotenv()
 
 logger = logging.getLogger(__name__)
@@ -41,6 +41,9 @@ reset_tokens_collection = db["reset_tokens"]
 newsletters_collection = db["newsletters"]
 otp_collection = db["otp_collection"]
 access_collection = db['access']
+lost_collection = db["lost"]
+found_collection = db["found"]
+
 
 firebase_key_base64 = os.getenv("FIREBASE_KEY_BASE64")
 if not firebase_key_base64:
@@ -54,6 +57,9 @@ firebase_admin.initialize_app(cred, {
 
 paystack_secret_key = os.getenv("PAYSTACK_SECRET_KEY")
 paystack_base_url = os.getenv("PAYSTACK_BASE_URL")
+MAILERLITE_API_KEY = os.getenv('MAILERLITE_API_KEY')
+MAILERLITE_SENDER_EMAIL = os.getenv('MAILERLITE_SENDER_EMAIL')
+brevo_api = os.getenv("BREVO_API")
 
 
 async def check_credentials(email_address: str) -> bool:
@@ -190,6 +196,7 @@ def upload_to_firebase(file: UploadFile, folder_name: str) -> str:
 
     # Return the public URL of the uploaded file
     return blob.public_url
+
 
 from urllib.parse import unquote
 
@@ -351,174 +358,405 @@ def generate_otp():
 
 
 # Function to send email with OTP
-def send_email_otp(receiver_email: str, otp: int):
-    try:
-        sender_email = os.getenv("EMAIL_USER")
-        sender_password = os.getenv("EMAIL_PASS")
-        sender_host = os.getenv("EMAIL_HOST")
-        # Create the email content
-        message = MIMEMultipart("alternative")
-        message["Subject"] = "Your OTP Code"
-        message["From"] = sender_email
-        message["To"] = receiver_email
+# def send_email_otp(receiver_email: str, otp: int):
+#     try:
+#         sender_email = os.getenv("EMAIL_USER")
+#         sender_password = os.getenv("EMAIL_PASS")
+#         sender_host = os.getenv("EMAIL_HOST")
+#         # Create the email content
+#         message = MIMEMultipart("alternative")
+#         message["Subject"] = "Your OTP Code"
+#         message["From"] = sender_email
+#         message["To"] = receiver_email
+#
+#         text = f"Your OTP code is {otp}. It is valid for 5 minutes."
+#         html = f"""\
+#         <html>
+#           <body>
+#             <p>Your OTP code is <strong>{otp}</strong>.<br>
+#                It is valid for 5 minutes.<br>
+#                Please use it to complete your verification process.
+#             </p>
+#           </body>
+#         </html>
+#         """
+#
+#         part1 = MIMEText(text, "plain")
+#         part2 = MIMEText(html, "html")
+#         message.attach(part1)
+#         message.attach(part2)
+#
+#         server = smtplib.SMTP_SSL(sender_host, 465)  # Using Gmail's SMTP server
+#         server.login(sender_email, sender_password)
+#         server.sendmail(sender_email, receiver_email, message.as_string())
+#         server.quit()
+#
+#         print(f"OTP sent successfully to {receiver_email}")
+#     except Exception as e:
+#         print(f"Failed to send email: {e}")
+#         raise HTTPException(status_code=500, detail="Failed to send OTP email")
 
-        text = f"Your OTP code is {otp}. It is valid for 5 minutes."
-        html = f"""\
+
+def send_email_otp(email: str, otp: int):
+    url = "https://api.brevo.com/v3/smtp/email"
+    payload = {
+        "sender": {
+            "name": "LFReturnMe Team",  # Sender name
+            "email": "no_reply@lfreturnme.com"  # Sender email
+        },
+        "to": [
+            {
+                "email": email,
+            }
+        ],
+        "subject": "Your OTP Code",
+        "htmlContent": f"""
         <html>
-          <body>
-            <p>Your OTP code is <strong>{otp}</strong>.<br>
-               It is valid for 5 minutes.<br>
-               Please use it to complete your verification process.
-            </p>
-          </body>
+        <head>
+            <style>
+                body {{
+                    font-family: Arial, sans-serif;
+                    background-color: #f4f4f4;
+                    margin: 0;
+                    padding: 0;
+                }}
+                .email-container {{
+                    max-width: 600px;
+                    margin: 20px auto;
+                    background-color: #ffffff;
+                    padding: 20px;
+                    border-radius: 8px;
+                    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+                    text-align: center;
+                }}
+                .email-header {{
+                    padding: 20px;
+                    background-color: #000000;  /* Changed header color to black */
+                    color: white;
+                    border-radius: 8px 8px 0 0;
+                }}
+                .email-header img {{
+                    width: 120px;
+                }}
+                .email-body {{
+                    padding: 20px;
+                    color: #333333;
+                    line-height: 1.6;
+                }}
+                .otp {{
+                    font-size: 24px;
+                    font-weight: bold;
+                    color: #007BFF;
+                }}
+                .email-footer {{
+                    padding: 20px;
+                    color: #999999;
+                    font-size: 12px;
+                    border-top: 1px solid #e0e0e0;
+                }}
+                .social-icons {{
+                    margin: 10px 0;
+                }}
+                .social-icons a {{
+                    margin: 0 10px;
+                }}
+                .social-icons img {{
+                    width: 24px;
+                    vertical-align: middle;
+                }}
+            </style>
+        </head>
+        <body>
+            <div class="email-container">
+                <div class="email-header">
+                    <img src="https://res.cloudinary.com/dskwy11us/image/upload/v1727959923/logo2_4_1_usow6b.png" alt="LFReturnMe Logo">
+                    <h1>Welcome to LFReturnMe!</h1>
+                </div>
+                <div class="email-body">
+                    <h2>Your OTP Code</h2>
+                    <p>Your OTP is: <span class="otp">{otp}</span></p>
+                    <p>Please use this code to complete your verification.</p>
+                </div>
+                <div class="email-footer">
+                    <p>Best regards,<br><strong>LFReturnMe Team</strong></p>
+                    <p>Connect with us on social media:</p>
+                    <div class="social-icons">
+                        <a href="https://www.instagram.com/lfreturnme" target="_blank">
+                            <img src="https://cdn-icons-png.flaticon.com/512/2111/2111463.png" alt="Instagram">
+                        </a>
+                        <a href="https://twitter.com/LFReturnMe1" target="_blank">
+                            <img src="https://res.cloudinary.com/dskwy11us/image/upload/v1729692730/X_tobavt.png" alt="X">  <!-- Updated Twitter logo to X -->
+                        </a>
+                        <a href="https://www.linkedin.com/company/lfreturnme" target="_blank">
+                            <img src="https://cdn-icons-png.flaticon.com/512/174/174857.png" alt="LinkedIn">
+                        </a>
+                        <a href="https://www.facebook.com/LFReturnMe" target="_blank">
+                            <img src="https://cdn-icons-png.flaticon.com/512/733/733547.png" alt="Facebook">
+                        </a>
+                    </div>
+                    <p>&copy; {datetime.now().year} LFReturnMe. All rights reserved.</p>
+                </div>
+            </div>
+        </body>
         </html>
         """
+    }
 
-        part1 = MIMEText(text, "plain")
-        part2 = MIMEText(html, "html")
-        message.attach(part1)
-        message.attach(part2)
+    headers = {
+        'accept': 'application/json',
+        'api-key': brevo_api,  # Replace with your Brevo API key
+        'Content-Type': 'application/json',
+    }
 
-        server = smtplib.SMTP_SSL(sender_host, 465)  # Using Gmail's SMTP server
-        server.login(sender_email, sender_password)
-        server.sendmail(sender_email, receiver_email, message.as_string())
-        server.quit()
-
-        print(f"OTP sent successfully to {receiver_email}")
-    except Exception as e:
-        print(f"Failed to send email: {e}")
-        raise HTTPException(status_code=500, detail="Failed to send OTP email")
-
-
+    # Send the POST request
+    try:
+        response = requests.post(url, headers=headers, json=payload)
+        response.raise_for_status()  # Raises an HTTPError if the status is 4xx or 5xx
+        return response.json()  # Return the response JSON
+    except requests.exceptions.RequestException as e:
+        # Handle request exceptions (timeout, connection error, etc.)
+        raise HTTPException(status_code=500, detail=f"Failed to send email: {str(e)}")
 
 
 def send_email(to_email: str, subject: str, body_content: str):
-    # Create a multipart email (text and HTML)
-    msg = MIMEMultipart("alternative")
-    msg["Subject"] = subject
-    msg["From"] = 'no_reply@lfreturnme.com'
-    msg["To"] = to_email
-
-    # Define the plain text version of the email content
-    plain_text = f"""
-    {body_content}
-
-    Best regards,
-    LFReturnMe Team
-
-    -- 
-    LFReturnMe
-    Phone: (123) 456-7890
-    Website: www.lfreturnme.com
-    """
-
-    # Define the HTML version of the email content
-    html_body = f"""
-    <html>
-    <head>
-        <style>
-            body {{
-                font-family: Arial, sans-serif;
-                background-color: #f4f4f4;
-                margin: 0;
-                padding: 0;
-                -webkit-font-smoothing: antialiased;
-                -moz-osx-font-smoothing: grayscale;
-            }}
-            .email-container {{
-                max-width: 600px;
-                margin: 20px auto;
-                background-color: #ffffff;
-                padding: 20px;
-                border-radius: 8px;
-                box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-            }}
-            .email-header {{
-                text-align: center;
-                padding-bottom: 20px;
-                border-bottom: 1px solid #e0e0e0;
-            }}
-            .email-header img {{
-                width: 120px;
-            }}
-            .email-body {{
-                padding: 20px;
-                color: #333333;
-                line-height: 1.6;
-            }}
-            .email-body h2 {{
-                color: #333;
-            }}
-            .email-footer {{
-                text-align: center;
-                padding: 20px;
-                color: #999999;
-                border-top: 1px solid #e0e0e0;
-            }}
-            .social-icons {{
-                margin: 10px 0;
-            }}
-            .social-icons img {{
-                width: 24px;
-                margin: 0 10px;
-                vertical-align: middle;
-            }}
-            a {{
-                color: #007BFF;
-                text-decoration: none;
-            }}
-        </style>
-    </head>
-    <body>
-        <div class="email-container">
-            <div class="email-header">
-                <img src="https://res.cloudinary.com/dskwy11us/image/upload/v1727959923/logo2_4_1_usow6b.png" alt="LFReturnMe Logo">
-            </div>
-            <div class="email-body">
-                {body_content}
-                <p>Best regards,<br><strong>LFReturnMe Team</strong></p>
-            </div>
-            <div class="email-footer">
-                <p>Connect with us on social media:</p>
-                <div class="social-icons">
-                    <a href="https://www.instagram.com/lfreturnme" target="_blank">
-                        <img src="https://cdn-icons-png.flaticon.com/512/2111/2111463.png" alt="Instagram">
-                    </a>
-                    <a href="https://twitter.com/LFReturnMe1" target="_blank">
-                        <img src="https://cdn-icons-png.flaticon.com/512/733/733579.png" alt="Twitter">
-                    </a>
-                    <a href="https://www.linkedin.com/company/lfreturnme" target="_blank">
-                        <img src="https://cdn-icons-png.flaticon.com/512/174/174857.png" alt="LinkedIn">
-                    </a>
-                    <a href="https://www.facebook.com/LFReturnMe" target="_blank">
-                        <img src="https://cdn-icons-png.flaticon.com/512/733/733547.png" alt="Facebook">
-                    </a>
+    url = "https://api.brevo.com/v3/smtp/email"
+    payload = {
+        "sender": {
+            "name": "LFReturnMe Team",  # Replace with your sender name
+            "email": "no_reply@lfreturnme.com"  # Replace with your sender email
+        },
+        "to": [
+            {
+                "email": to_email
+            }
+        ],
+        "subject": subject,
+        "htmlContent": f"""
+        <html>
+        <head>
+            <style>
+                body {{
+                    font-family: Arial, sans-serif;
+                    background-color: #f4f4f4;
+                    margin: 0;
+                    padding: 0;
+                    -webkit-font-smoothing: antialiased;
+                    -moz-osx-font-smoothing: grayscale;
+                }}
+                .email-container {{
+                    max-width: 600px;
+                    margin: 20px auto;
+                    background-color: #ffffff;
+                    padding: 20px;
+                    border-radius: 8px;
+                    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+                }}
+                .email-header {{
+                    text-align: center;
+                    padding-bottom: 20px;
+                    border-bottom: 1px solid #e0e0e0;
+                }}
+                .email-header img {{
+                    width: 120px;
+                }}
+                .email-body {{
+                    padding: 20px;
+                    color: #333333;
+                    line-height: 1.6;
+                }}
+                .email-body h2 {{
+                    color: #333;
+                }}
+                .email-footer {{
+                    text-align: center;
+                    padding: 20px;
+                    color: #999999;
+                    border-top: 1px solid #e0e0e0;
+                }}
+                .social-icons {{
+                    margin: 10px 0;
+                }}
+                .social-icons img {{
+                    width: 24px;
+                    margin: 0 10px;
+                    vertical-align: middle;
+                }}
+                a {{
+                    color: #007BFF;
+                    text-decoration: none;
+                }}
+            </style>
+        </head>
+        <body>
+            <div class="email-container">
+                <div class="email-header">
+                    <img src="https://res.cloudinary.com/dskwy11us/image/upload/v1727959923/logo2_4_1_usow6b.png" alt="LFReturnMe Logo">
                 </div>
-                <p>&copy; {str(datetime.now().year)} LFReturnMe. All rights reserved.</p>
-                <p>Phone: (123) 456-7890 | Website: <a href="https://www.lfreturnme.com">www.lfreturnme.com</a></p>
+                <div class="email-body">
+                    {body_content}
+                    <p>Best regards,<br><strong>LFReturnMe Team</strong></p>
+                </div>
+                <div class="email-footer">
+                    <p>Connect with us on social media:</p>
+                    <div class="social-icons">
+                        <a href="https://www.instagram.com/lfreturnme" target="_blank">
+                            <img src="https://cdn-icons-png.flaticon.com/512/2111/2111463.png" alt="Instagram">
+                        </a>
+                        <a href="https://twitter.com/LFReturnMe1" target="_blank">
+                            <img src="https://res.cloudinary.com/dskwy11us/image/upload/v1729692730/X_tobavt.png" alt="Twitter">
+                        </a>
+                        <a href="https://www.linkedin.com/company/lfreturnme" target="_blank">
+                            <img src="https://cdn-icons-png.flaticon.com/512/174/174857.png" alt="LinkedIn">
+                        </a>
+                        <a href="https://www.facebook.com/LFReturnMe" target="_blank">
+                            <img src="https://cdn-icons-png.flaticon.com/512/733/733547.png" alt="Facebook">
+                        </a>
+                    </div>
+                    <p>&copy; {datetime.now().year} LFReturnMe. All rights reserved.</p>
+                    <p>Website: <a href="https://www.lfreturnme.com">www.lfreturnme.com</a></p>
+                </div>
             </div>
-        </div>
-    </body>
-    </html>
-    """
+        </body>
+        </html>
+        """
+    }
 
-    # Attach the plain text and HTML versions of the body
-    msg.attach(MIMEText(plain_text, "plain"))
-    msg.attach(MIMEText(html_body, "html"))
-
-    # Email server configuration
-    sender_email = os.getenv("EMAIL_USER")
-    sender_password = os.getenv("EMAIL_PASS")
-    sender_host = os.getenv("EMAIL_HOST")
+    headers = {
+        'accept': 'application/json',
+        'api-key': brevo_api,  # Replace with your Brevo API key
+        'Content-Type': 'application/json',
+    }
 
     # Sending the email
-    with smtplib.SMTP_SSL(sender_host, 465) as server:
-        server.login(sender_email, sender_password)
-        server.sendmail(sender_email, to_email, msg.as_string())
+    try:
+        response = requests.post(url, headers=headers, json=payload)
+        response.raise_for_status()  # Raises an HTTPError if the status is 4xx or 5xx
         print("Email sent successfully!")
+    except requests.exceptions.RequestException as e:
+        # Handle request exceptions (timeout, connection error, etc.)
+        raise HTTPException(status_code=500, detail=f"Failed to send email: {str(e)}")
 
 
 # Example usage
+def send_email_reset(to_email: str, reset_link: str):
+    url = "https://api.brevo.com/v3/smtp/email"
+    payload = {
+        "sender": {
+            "name": "LFReturnMe Team",  # Sender name
+            "email": "no_reply@lfreturnme.com"  # Sender email
+        },
+        "to": [
+            {
+                "email": to_email  # Recipient email
+            }
+        ],
+        "subject": "Password Reset Request",
+        "htmlContent": f"""
+        <html>
+        <head>
+            <style>
+                body {{
+                    font-family: Arial, sans-serif;
+                    background-color: #f4f4f4;
+                    margin: 0;
+                    padding: 0;
+                }}
+                .email-container {{
+                    max-width: 600px;
+                    margin: 20px auto;
+                    background-color: #ffffff;
+                    padding: 20px;
+                    border-radius: 8px;
+                    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+                    text-align: center;
+                }}
+                .email-header {{
+                    padding: 20px;
+                    background-color: #000000;  /* Header color */
+                    color: white;
+                    border-radius: 8px 8px 0 0;
+                }}
+                .email-header img {{
+                    width: 120px;
+                }}
+                .email-body {{
+                    padding: 20px;
+                    color: #333333;
+                    line-height: 1.6;
+                }}
+                .reset-link {{
+                    font-size: 20px;
+                    font-weight: bold;
+                    color: #007BFF;
+                }}
+                .email-footer {{
+                    padding: 20px;
+                    color: #999999;
+                    font-size: 12px;
+                    border-top: 1px solid #e0e0e0;
+                }}
+                .social-icons {{
+                    margin: 10px 0;
+                }}
+                .social-icons a {{
+                    margin: 0 10px;
+                }}
+                .social-icons img {{
+                    width: 24px;
+                    vertical-align: middle;
+                }}
+            </style>
+        </head>
+        <body>
+            <div class="email-container">
+                <div class="email-header">
+                    <img src="https://res.cloudinary.com/dskwy11us/image/upload/v1727959923/logo2_4_1_usow6b.png" alt="LFReturnMe Logo">
+                    <h1>Password Reset Request</h1>
+                </div>
+                <div class="email-body">
+                    <p>To reset your password, please click the link below:</p>
+                    <p><a class="reset-link" href='{reset_link}'>{reset_link}</a><br>Link  expires after 5 minutes</p>
+                    <p>If you did not request a password reset, please ignore this email.</p>
+                </div>
+                <div class="email-footer">
+                    <p>Best regards,<br><strong>LFReturnMe Team</strong></p>
+                    <p>Connect with us on social media:</p>
+                    <div class="social-icons">
+                        <a href="https://www.instagram.com/lfreturnme" target="_blank">
+                            <img src="https://cdn-icons-png.flaticon.com/512/2111/2111463.png" alt="Instagram">
+                        </a>
+                        <a href="https://twitter.com/LFReturnMe1" target="_blank">
+                            <img src="https://res.cloudinary.com/dskwy11us/image/upload/v1729692730/X_tobavt.png" alt="X">  <!-- Updated Twitter logo to X -->
+                        </a>
+                        <a href="https://www.linkedin.com/company/lfreturnme" target="_blank">
+                            <img src="https://cdn-icons-png.flaticon.com/512/174/174857.png" alt="LinkedIn">
+                        </a>
+                        <a href="https://www.facebook.com/LFReturnMe" target="_blank">
+                            <img src="https://cdn-icons-png.flaticon.com/512/733/733547.png" alt="Facebook">
+                        </a>
+                    </div>
+                    <p>&copy; {datetime.now().year} LFReturnMe. All rights reserved.</p>
+                </div>
+            </div>
+        </body>
+        </html>
+        """
+    }
+
+    headers = {
+        'accept': 'application/json',
+        'api-key': brevo_api,  # Replace with your Brevo API key
+        'Content-Type': 'application/json',
+    }
+
+    # Send the POST request
+    try:
+        response = requests.post(url, headers=headers, json=payload)
+        response.raise_for_status()  # Raises an HTTPError if the status is 4xx or 5xx
+        print("Email sent successfully!")
+    except requests.exceptions.RequestException as e:
+        # Handle request exceptions (timeout, connection error, etc.)
+        raise HTTPException(status_code=500, detail=f"Failed to send email: {str(e)}")
 
 
 async def verify_user_email(email: str):
