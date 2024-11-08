@@ -18,7 +18,7 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from crud import update_subscriptions_daily  # Import the function from crud.py
 
 app = FastAPI()
-#(docs_url=None, redoc_url=None, openapi_url=None
+# (docs_url=None, redoc_url=None, openapi_url=None
 origins = [
     "https://www.lfreturnme.com",
     "https://api.paystack.co",
@@ -78,19 +78,19 @@ async def signup(
 
         # Upload files to Firebase
         profile_picture_url = upload_to_firebase(profile_picture, "profile_picture")
-        #id_card_image_url = upload_to_firebase(id_card_image)
+        # id_card_image_url = upload_to_firebase(id_card_image)
 
         user = schemas.Signup(
             full_name=full_name,
             email_address=email_address,
             date_of_birth=date_of_birth_obj,
             address=address,
-            #id_no=id_no,
+            # id_no=id_no,
             phone_number=phone_number,
             gender=gender,
-            #valid_id_type=valid_id_type,
+            # valid_id_type=valid_id_type,
             profile_picture=profile_picture_url,
-            #id_card_image=id_card_image_url,
+            # id_card_image=id_card_image_url,
             password=password,
             is_verified=False,
 
@@ -300,18 +300,18 @@ async def update_item_status(
             f"Your {item.item_name} is Now Reported as Lost",
             f"""
                 <h2>Dear {user['full_name']},</h2>
-            
+
                 <p>We’re sorry to hear that you’ve misplaced your <strong>{item.item_description}</strong>. Rest assured, LFReturnMe is here to help you in your efforts to recover it!</p>
-            
+
                 <p>Your item has now been marked as lost in our system, and we will notify members of our Finders Community to be on the lookout.</p>
-            
+
                 <h3>Next Steps:</h3>
                 <ul>
                     <li><strong>Track Updates:</strong> We’ll keep you informed if any updates or reports come in regarding your lost item.</li>
                     <li><strong>Spread the Word:</strong> You can also share your lost item details with your network, and encourage others to join our Finders Community to increase your chances of recovery.</li>
                     <li><strong>Recovery Process:</strong> If your item is found, we’ll notify you immediately with instructions on how to claim it.</li>
                 </ul>
-            
+
                 <p>If you have any questions or need further assistance, feel free to reach out to our support team. We’re with you every step of the way!</p>
             """
         )
@@ -361,6 +361,7 @@ async def add_lost_item(
         description: str = Form(...),
         item_image: UploadFile = File(None),  # Make item_image optional,
         tag_id: Optional[str] = Form(None),
+        specific_location: Optional[str] = Form(None),
 ):
     start_time = time.time()
     image_url = ""
@@ -384,7 +385,8 @@ async def add_lost_item(
         email=email,
         description=description,
         item_image=image_url,
-        tag_id=tag_id  # Assuming tag_id is part of the form or set to None
+        tag_id=tag_id,  # Assuming tag_id is part of the form or set to None
+        specific_location=specific_location
     )
 
     if lost.tag_id is None:
@@ -451,7 +453,9 @@ async def add_found_item(
         description: str = Form(...),
         item_image: UploadFile = File(None),
         tag_id: Optional[str] = Form(None),
+        specific_location: Optional[str] = Form(None),
 ):
+    print(specific_location)
     start_time = time.time()
     if item_image is not None:
         image_url = upload_to_firebase(item_image, "found_items")
@@ -472,7 +476,8 @@ async def add_found_item(
         email=email,
         description=description,
         item_image=image_url,
-        tag_id=tag_id  # Assuming tag_id is part of the form or set to None
+        tag_id=tag_id,  # Assuming tag_id is part of the form or set to None
+        specific_location=specific_location,
     )
 
     if found.tag_id is None:
@@ -659,12 +664,12 @@ async def get_user_dashboard(uuid: str):
         email_address=user.get("email_address"),
         date_of_birth=user.get("date_of_birth"),
         address=user.get("address"),
-        #id_no=user.get("id_no"),
+        # id_no=user.get("id_no"),
         profile_picture=user.get("profile_picture"),
         phone_number=user.get("phone_number"),
         gender=user.get("gender"),
-        #valid_id_type=user.get("valid_id_type"),
-        #id_card_image=user.get("id_card_image"),
+        # valid_id_type=user.get("valid_id_type"),
+        # id_card_image=user.get("id_card_image"),
         password=user.get("password"),
         is_verified=user.get("is_verified"),
         items=user.get("items", {})  # Assuming items are stored as a dictionary
@@ -699,8 +704,8 @@ async def paystack_webhook(request: Request, background_tasks: BackgroundTasks):
             event = json.loads(payload.decode("utf-8"))
             data = event.get('data', {})
             event_type = event.get('event')
-            #logging.info(event_type)
-            #logging.info(data)
+            # logging.info(event_type)
+            # logging.info(data)
         except json.JSONDecodeError as e:
             logging.error(f"JSON decode error: {str(e)}")
             raise HTTPException(status_code=400, detail="Invalid JSON format")
@@ -721,16 +726,19 @@ async def get_items_by_location(
         page: int = Query(1, ge=1, description="Page number"),
         page_size: int = Query(10, ge=1, le=100, description="Number of items per page")
 ):
-    # Calculate the number of items to skip based on the current page
+    # Calculate the number of items to skip based on the page number and page size
     skip = (page - 1) * page_size
-    # Query MongoDB with the specified filters and pagination
-    items_cursor = crud.found_collection.find({"location": location}).skip(skip).limit(page_size)
-    items = list(items_cursor)
 
-    # If no items are found, return a 404 error
+    # Fetch items based on the location filter, sorted by `date` in descending order, with pagination
+    items_cursor = crud.found_collection.find(
+        {"location": location}
+    ).sort("date", -1).skip(skip).limit(page_size)
+
+    # Convert the cursor to a list asynchronously
+    items = await items_cursor.to_list(length=page_size)
+
+    # Check if the items list is empty and return a 404 error if no items are found
     if not items:
-        raise HTTPException(status_code=404, detail="No items found for the specified location.")
+        raise HTTPException(status_code=404, detail="No items found for the given location")
 
-
-    # Convert MongoDB documents to Pydantic models
-    return [LostFound(**item) for item in items]
+    return items

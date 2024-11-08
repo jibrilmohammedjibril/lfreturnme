@@ -127,6 +127,7 @@ class LostFound(BaseModel):
     item: str
     name: str
     location: str
+    specific_location: Optional[str] = None
     date: str
     tag_id: Optional[str] = None
     phone_number: str
